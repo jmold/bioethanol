@@ -1,6 +1,6 @@
 # Bio-Agri Process Simulator — V0.19 Animated Digital Twin
 
-Application version: **0.19.0**  
+Application version: **0.19.1**  
 Engineering model version: **0.19.0**  
 Schema version: **1.0.0**
 

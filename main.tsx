@@ -435,7 +435,7 @@ function App(){
         <div className="app-mark">B</div>
         <div className="title-stack">
           <input className="flow-name" aria-label="Flowsheet name" value={flow?.name||''} onChange={e=>{if(flow){setFlow({...flow,name:e.target.value});setIsDirty(true)}}}/>
-          <div className="app-subtitle">Bio-Agri Process Simulator <span>V{appMeta?.version||'0.19.0'} · Model {appMeta?.model_version||'0.19.0'}{isDirty?' · Unsaved changes':''}</span></div>
+          <div className="app-subtitle">Bio-Agri Process Simulator <span>V{appMeta?.version||'0.19.1'} · Model {appMeta?.model_version||'0.19.0'}{isDirty?' · Unsaved changes':''}</span></div>
         </div>
       </div>
       <div className="toolbar" aria-label="Main controls">
