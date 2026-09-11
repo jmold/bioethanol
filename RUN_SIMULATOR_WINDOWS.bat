@@ -1,19 +1,19 @@
 @echo off
 setlocal EnableExtensions
-title BioAgri Process Simulator V0.19
+title BioAgri Process Simulator V0.20 Alpha
 
 set "ROOT=%~dp0"
 set "FRONTEND_SOURCE=%ROOT%frontend"
 set "FRONTEND=%LOCALAPPDATA%\BioAgri Process Simulator\frontend-runtime"
 
 echo ==========================================
-echo BioAgri Process Simulator V0.19
+echo BioAgri Process Simulator V0.20 Alpha
 echo One-click launcher
 echo ==========================================
 echo.
 
-if not exist "%ROOT%api.py" (
-    echo ERROR: api.py is missing.
+if not exist "%ROOT%api_v020.py" (
+    echo ERROR: api_v020.py is missing.
     pause
     exit /b 1
 )
@@ -91,14 +91,14 @@ if "%NEED_NPM_INSTALL%"=="1" (
 )
 popd
 
-echo [4/6] Starting backend on port 8000...
-start "BioAgri Backend" cmd /k "cd /d ""%ROOT%"" && python -m uvicorn api:app --host 127.0.0.1 --port 8000"
+echo [4/6] Starting V0.20 backend on port 8000...
+start "BioAgri Backend" cmd /k "cd /d ""%ROOT%"" && python -m uvicorn api_v020:app --host 127.0.0.1 --port 8000"
 
 echo [5/6] Starting frontend on port 5173...
 start "BioAgri Frontend" cmd /k "cd /d ""%FRONTEND%"" && npm run dev -- --host 127.0.0.1 --port 5173"
 
 echo [6/6] Waiting for the simulator to become ready...
-powershell -NoProfile -Command "$limit=(Get-Date).AddSeconds(45); do { try { $api=(Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8000/api/health' -TimeoutSec 2).StatusCode; $ui=(Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:5173' -TimeoutSec 2).StatusCode; if ($api -eq 200 -and $ui -eq 200) { exit 0 } } catch {}; Start-Sleep -Seconds 1 } while ((Get-Date) -lt $limit); exit 1"
+powershell -NoProfile -Command "$limit=(Get-Date).AddSeconds(45); do { try { $api=(Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8000/api/v020-meta' -TimeoutSec 2).StatusCode; $ui=(Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:5173' -TimeoutSec 2).StatusCode; if ($api -eq 200 -and $ui -eq 200) { exit 0 } } catch {}; Start-Sleep -Seconds 1 } while ((Get-Date) -lt $limit); exit 1"
 if errorlevel 1 (
     echo.
     echo ERROR: The simulator did not become ready within 45 seconds.
@@ -112,7 +112,7 @@ echo.
 echo ==========================================
 echo Simulator is running successfully.
 echo Browser: http://127.0.0.1:5173
-echo API:     http://127.0.0.1:8000/api/health
+echo API:     http://127.0.0.1:8000/api/v020-meta
 echo ==========================================
 echo.
 echo Keep the Backend and Frontend windows open.
