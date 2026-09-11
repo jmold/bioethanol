@@ -1,0 +1,37 @@
+name: Apply V0.20 Digital Twin UI
+
+on:
+  push:
+    branches:
+      - v0.20-connected-engine
+    paths:
+      - scripts/patch_v020_ui.py
+      - .github/workflows/apply-v020-ui.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v0.20-connected-engine
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Patch Digital Twin
+        run: python scripts/patch_v020_ui.py
+      - name: Commit patched UI
+        run: |
+          if git diff --quiet; then
+            echo "No UI changes required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add main.tsx
+          git commit -m "Align V0.20 Digital Twin with process flow"
+          git push origin HEAD:v0.20-connected-engine
