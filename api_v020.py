@@ -2,7 +2,7 @@
 
 The steady-state V0.19 engineering model remains authoritative for chemistry,
 thermodynamics and utilities. V0.20 replaces only the time-domain plant payload
-with the connected event engine, while retaining legacy comparison metadata.
+with the connected event engine, while retaining the V0.19 utility basis.
 """
 
 from fastapi import HTTPException
@@ -40,11 +40,13 @@ def _connected_payload(definition: dict, result: dict) -> dict:
             "active_hot_discharges",
         ):
             row[key] = legacy_row.get(key, 0.0)
-    connected["legacy_scheduler_comparison"]["utility_basis"] = "V0.19 time-domain utility model retained during V0.20-alpha"
+    connected["legacy_utility_basis"] = {
+        "engine_version": legacy.get("engine_version", "0.19.0"),
+        "utility_basis": "V0.19 time-domain utility model retained during V0.20",
+    }
     return connected
 
 
-# Replace the two V0.19 time-domain endpoints only when this extension is loaded.
 _remove_post_route("/api/run")
 _remove_post_route("/api/dynamic-plant")
 
@@ -84,9 +86,10 @@ def connected_plant(payload: FlowsheetPayload):
 def v020_meta():
     return {
         "application": "Bio-Agri Process Simulator",
-        "model_version": "0.20.0-alpha",
-        "engine": "connected discrete-event plant engine",
+        "model_version": "0.20.0-alpha2",
+        "engine": "direct vessel-to-vessel discrete-event plant engine",
         "connected_material_transfers": True,
+        "intermediate_buffers_assumed": False,
         "legacy_model_retained": "0.19.0",
         "chemistry_utility_basis": "V0.19 retained during alpha",
     }
