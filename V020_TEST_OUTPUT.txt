@@ -1,0 +1,55 @@
+test_alternative_route_runs_without_errors (test_application.ApplicationRegressionTests.test_alternative_route_runs_without_errors) ... ok
+test_duplicate_block_ids_are_rejected (test_application.ApplicationRegressionTests.test_duplicate_block_ids_are_rejected) ... ok
+test_empty_flowsheet_is_rejected_with_422 (test_application.ApplicationRegressionTests.test_empty_flowsheet_is_rejected_with_422) ... ok
+test_kpi_extraction_contains_required_plant_metrics (test_application.ApplicationRegressionTests.test_kpi_extraction_contains_required_plant_metrics) ... ok
+test_reference_route_closes_and_matches_ethanol_baseline (test_application.ApplicationRegressionTests.test_reference_route_closes_and_matches_ethanol_baseline) ... ok
+test_report_contains_engineering_tables_and_pdf_control (test_application.ApplicationRegressionTests.test_report_contains_engineering_tables_and_pdf_control) ... ok
+test_sensitivity_changes_ethanol_output (test_application.ApplicationRegressionTests.test_sensitivity_changes_ethanol_output) ... ok
+test_unknown_connection_port_is_rejected (test_application.ApplicationRegressionTests.test_unknown_connection_port_is_rejected) ... ok
+test_blocking_is_possible_without_buffers (test_connected_dynamic_engine.ConnectedDynamicEngineTests.test_blocking_is_possible_without_buffers) ... ok
+test_connected_engine_identity (test_connected_dynamic_engine.ConnectedDynamicEngineTests.test_connected_engine_identity) ... ok
+test_downstream_waits_for_upstream_material (test_connected_dynamic_engine.ConnectedDynamicEngineTests.test_downstream_waits_for_upstream_material) ... ok
+test_end_to_end_throughput_is_from_completed_fermentation_batches (test_connected_dynamic_engine.ConnectedDynamicEngineTests.test_end_to_end_throughput_is_from_completed_fermentation_batches) ... ok
+test_hydrolysis_accepts_partial_pretreatment_fills (test_connected_dynamic_engine.ConnectedDynamicEngineTests.test_hydrolysis_accepts_partial_pretreatment_fills) ... ok
+test_shared_pumps_create_contention (test_connected_dynamic_engine.ConnectedDynamicEngineTests.test_shared_pumps_create_contention) ... ok
+test_source_inventory_is_conserved (test_connected_dynamic_engine.ConnectedDynamicEngineTests.test_source_inventory_is_conserved) ... ok
+test_transfers_are_direct_vessel_to_vessel (test_connected_dynamic_engine.ConnectedDynamicEngineTests.test_transfers_are_direct_vessel_to_vessel) ... ok
+test_vessel_inventory_never_exceeds_working_batch_capacity (test_connected_dynamic_engine.ConnectedDynamicEngineTests.test_vessel_inventory_never_exceeds_working_batch_capacity) ... ok
+test_capacity_and_kinetics_are_exposed (test_native_dynamic_engine.NativeDynamicEngineTests.test_capacity_and_kinetics_are_exposed) ... ok
+test_dynamic_utilities_have_peaks (test_native_dynamic_engine.NativeDynamicEngineTests.test_dynamic_utilities_have_peaks) ... ok
+test_explicit_non_positive_pump_capacity_is_rejected (test_native_dynamic_engine.NativeDynamicEngineTests.test_explicit_non_positive_pump_capacity_is_rejected) ... ok
+test_is_native_and_time_resolved (test_native_dynamic_engine.NativeDynamicEngineTests.test_is_native_and_time_resolved) ... ok
+test_larger_transfer_pumps_reduce_cycle_time (test_native_dynamic_engine.NativeDynamicEngineTests.test_larger_transfer_pumps_reduce_cycle_time) ... ok
+test_three_batch_sections_are_scheduled (test_native_dynamic_engine.NativeDynamicEngineTests.test_three_batch_sections_are_scheduled) ... ok
+test_transfer_pump_motor_load_is_applied_to_transfer_phase (test_native_dynamic_engine.NativeDynamicEngineTests.test_transfer_pump_motor_load_is_applied_to_transfer_phase) ... ok
+test_transfer_times_are_set_by_selected_pump_capacity (test_native_dynamic_engine.NativeDynamicEngineTests.test_transfer_times_are_set_by_selected_pump_capacity) ... ok
+test_meta_identifies_connected_engine (test_v020_api.V020ApiTests.test_meta_identifies_connected_engine) ... ok
+test_normal_run_returns_connected_dynamic_payload (test_v020_api.V020ApiTests.test_normal_run_returns_connected_dynamic_payload) ... ERROR
+
+======================================================================
+ERROR: test_normal_run_returns_connected_dynamic_payload (test_v020_api.V020ApiTests.test_normal_run_returns_connected_dynamic_payload)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/runner/work/bioethanol/bioethanol/api_v020.py", line 57, in run_flowsheet_v020
+    result["dynamic_plant"] = _connected_payload(definition, result)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/bioethanol/bioethanol/api_v020.py", line 43, in _connected_payload
+    connected["legacy_scheduler_comparison"]["utility_basis"] = "V0.19 time-domain utility model retained during V0.20-alpha"
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyError: 'legacy_scheduler_comparison'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/runner/work/bioethanol/bioethanol/test_v020_api.py", line 22, in test_normal_run_returns_connected_dynamic_payload
+    result = run_flowsheet_v020(FlowsheetPayload(flowsheet=self.definition))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/bioethanol/bioethanol/api_v020.py", line 60, in run_flowsheet_v020
+    raise HTTPException(status_code=422, detail=f"The V0.20 model could not calculate this flowsheet: {exc}") from exc
+fastapi.exceptions.HTTPException: 422: The V0.20 model could not calculate this flowsheet: 'legacy_scheduler_comparison'
+
+----------------------------------------------------------------------
+Ran 27 tests in 0.172s
+
+FAILED (errors=1)
+EXIT_CODE=1
