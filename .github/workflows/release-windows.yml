@@ -3,6 +3,10 @@ name: Release Windows application
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
+    paths:
+      - RELEASE_VERSION
     tags:
       - "app-v*"
 
@@ -45,8 +49,7 @@ jobs:
         with:
           tagName: app-v__VERSION__
           releaseName: "BioAgri Process Simulator v__VERSION__"
-          releaseBody: "Signed Windows release for the BioAgri Process Simulator. Existing installations will be offered this update automatically."
+          releaseBody: "BioAgri Process Simulator V0.20 introduces the connected direct vessel-to-vessel plant scheduler and an updated Digital Twin aligned with the current Miscanthus process flow. Existing installations will be offered this signed update automatically."
           releaseDraft: false
           prerelease: false
           args: --bundles nsis
-
