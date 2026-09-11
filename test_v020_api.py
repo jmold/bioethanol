@@ -15,17 +15,21 @@ class V020ApiTests(unittest.TestCase):
 
     def test_meta_identifies_connected_engine(self):
         meta = v020_meta()
-        self.assertEqual(meta["model_version"], "0.20.0-alpha")
+        self.assertEqual(meta["model_version"], "0.20.0-alpha2")
         self.assertTrue(meta["connected_material_transfers"])
+        self.assertFalse(meta["intermediate_buffers_assumed"])
 
     def test_normal_run_returns_connected_dynamic_payload(self):
         result = run_flowsheet_v020(FlowsheetPayload(flowsheet=self.definition))
         dynamic = result["dynamic_plant"]
-        self.assertEqual(dynamic["engine_version"], "0.20.0-alpha")
+        self.assertEqual(dynamic["engine_version"], "0.20.0-alpha2")
         self.assertTrue(dynamic["connected_material_transfers"])
+        self.assertFalse(dynamic["intermediate_buffers_assumed"])
+        self.assertNotIn("buffers", dynamic)
         self.assertIn("connected_throughput", dynamic)
-        self.assertIn("buffers", dynamic)
         self.assertIn("operability", dynamic)
+        self.assertIn("vessel_inventory_t", dynamic["timeline"][0])
+        self.assertIn("vessel_fill_fraction", dynamic["timeline"][0])
         self.assertGreater(len(dynamic["timeline"]), 0)
         self.assertIn("net_external_thermal_kW", dynamic["timeline"][0])
         self.assertIn("electrical_kW", dynamic["timeline"][0])
