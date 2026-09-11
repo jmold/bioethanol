@@ -9,56 +9,31 @@ from native_dynamic_engine import build_native_dynamic_simulation
 
 def _f(value: Any, default: float = 0.0) -> float:
     try:
-        value = float(value)
+        value=float(value)
         return value if math.isfinite(value) else default
-    except (TypeError, ValueError):
+    except (TypeError,ValueError):
         return default
-
-
-@dataclass
-class BufferState:
-    buffer_id: str
-    name: str
-    capacity_t: float
-    inventory_t: float = 0.0
-    maximum_inventory_t: float = 0.0
-
-    def add(self, mass_t: float) -> None:
-        if mass_t < -1e-9:
-            raise ValueError("Cannot add negative mass to a buffer.")
-        if self.inventory_t + mass_t > self.capacity_t + 1e-8:
-            raise ValueError(f"Buffer {self.buffer_id} capacity exceeded.")
-        self.inventory_t += mass_t
-        self.maximum_inventory_t = max(self.maximum_inventory_t, self.inventory_t)
-
-    def remove(self, mass_t: float) -> None:
-        if mass_t < -1e-9:
-            raise ValueError("Cannot remove negative mass from a buffer.")
-        if self.inventory_t + 1e-8 < mass_t:
-            raise ValueError(f"Buffer {self.buffer_id} inventory would become negative.")
-        self.inventory_t = max(0.0, self.inventory_t - mass_t)
 
 
 @dataclass
 class PumpResource:
     pump_id: str
     name: str
-    busy_until_h: float = 0.0
-    owner: str | None = None
-    busy_h: float = 0.0
-    contention_count: int = 0
+    busy_until_h: float=0.0
+    owner: str|None=None
+    busy_h: float=0.0
+    contention_count: int=0
 
-    def available(self, now_h: float) -> bool:
-        return now_h >= self.busy_until_h - 1e-9
+    def available(self, now: float)->bool:
+        return now >= self.busy_until_h-1e-9
 
-    def reserve(self, now_h: float, duration_h: float, owner: str) -> None:
-        if not self.available(now_h):
+    def reserve(self, now: float, duration_h: float, owner: str)->None:
+        if not self.available(now):
             self.contention_count += 1
-            raise RuntimeError(f"Pump {self.pump_id} is already reserved.")
-        duration_h = max(0.0, duration_h)
-        self.busy_until_h = now_h + duration_h
-        self.owner = owner
-        self.busy_h += duration_h
+            raise RuntimeError(f"Pump {self.pump_id} already reserved")
+        self.busy_until_h=now+max(0.0,duration_h)
+        self.owner=owner
+        self.busy_h += max(0.0,duration_h)
 
 
 @dataclass
@@ -67,295 +42,246 @@ class Vessel:
     section_id: str
     section_type: str
     batch_capacity_t: float
-    state: str = "AVAILABLE"
-    state_until_h: float = 0.0
-    batch_mass_t: float = 0.0
-    source_feed_equivalent_t: float = 0.0
-    pending_action: str | None = None
-    completed_batches: int = 0
-    state_time_h: dict[str, float] = field(default_factory=dict)
+    state: str="AVAILABLE"
+    state_until_h: float=0.0
+    batch_mass_t: float=0.0
+    source_feed_equivalent_t: float=0.0
+    pending_action: str|None=None
+    transfer_source_id: str|None=None
+    completed_batches: int=0
+    state_time_h: dict[str,float]=field(default_factory=dict)
 
 
-def _section_specs(legacy: dict) -> list[dict]:
-    return [dict(x) for x in legacy.get("vessel_schedules", []) if x.get("block_type") in {"pretreatment", "hydrolysis", "fermentation"}]
+def _section_specs(legacy:dict)->list[dict]:
+    rows=[dict(x) for x in legacy.get("vessel_schedules",[]) if x.get("block_type") in {"pretreatment","hydrolysis","fermentation"}]
+    order={"pretreatment":0,"hydrolysis":1,"fermentation":2}
+    return sorted(rows,key=lambda x:order[x["block_type"]])
 
 
-def _duration(schedule: dict, phase_name: str) -> float:
-    for phase in schedule.get("phases", []):
-        if phase.get("name") == phase_name:
-            return max(0.0, _f(phase.get("duration_h")))
+def _duration(schedule:dict,name:str)->float:
+    for p in schedule.get("phases",[]):
+        if p.get("name")==name:
+            return max(0.0,_f(p.get("duration_h")))
     return 0.0
 
 
-def _processing_duration(schedule: dict) -> float:
-    names = {
-        "pretreatment": ("HEATING_PRETREATMENT", "REACTION_HOLD"),
-        "hydrolysis": ("ENZYMATIC_HYDROLYSIS",),
-        "fermentation": ("FERMENTATION",),
-    }[schedule["block_type"]]
-    return sum(_duration(schedule, n) for n in names)
+def _processing_duration(schedule:dict)->float:
+    names={"pretreatment":("HEATING_PRETREATMENT","REACTION_HOLD"),"hydrolysis":("ENZYMATIC_HYDROLYSIS",),"fermentation":("FERMENTATION",)}[schedule["block_type"]]
+    return sum(_duration(schedule,n) for n in names)
 
 
-def _cip_duration(schedule: dict) -> float:
-    return _duration(schedule, "CIP_TURNAROUND")
+def _cip_duration(schedule:dict)->float:
+    return _duration(schedule,"CIP_TURNAROUND")
 
 
-def _buffer_capacity(schedule: dict, batches: float) -> float:
-    return max(_f(schedule.get("batch_mass_t")), _f(schedule.get("batch_mass_t")) * max(1.0, batches))
+def _ethanol_ratio(results:dict,first:dict)->float:
+    ethanol=_f((results.get("terminal_component_totals") or {}).get("ethanol"))
+    feed=_f(first.get("required_throughput_tph"))
+    return ethanol/feed if feed>0 else 0.0
 
 
-def _ethanol_ratio(results: dict, first_section: dict | None) -> float:
-    ethanol_tph = _f((results.get("terminal_component_totals") or {}).get("ethanol"), 0.0)
-    feed_tph = _f((first_section or {}).get("required_throughput_tph"), 0.0)
-    return ethanol_tph / feed_tph if feed_tph > 0 else 0.0
+def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min:int=15,horizon_h:float=168.0)->dict:
+    """V0.20 direct-transfer connected plant scheduler.
 
-
-def build_connected_dynamic_simulation(
-    definition: dict,
-    results: dict,
-    timestep_min: int = 15,
-    horizon_h: float = 168.0,
-    buffer_capacity_batches: float = 2.0,
-) -> dict:
-    """V0.20 connected discrete-event engineering screening engine.
-
-    V0.19 remains the source of section sizing and phase durations. V0.20 adds
-    causal batch hand-offs, finite intermediate buffers, one shared inlet and
-    outlet pump per section, starvation, blocking and end-to-end throughput.
+    No intermediate buffer vessels are assumed. Upstream vessels may only
+    discharge directly into an available downstream process vessel. If the
+    downstream vessel is smaller than the transferred batch or unavailable,
+    the upstream vessel remains BLOCKED. If a downstream vessel is only
+    partially filled it remains WAITING_FOR_FEED until enough upstream batches
+    arrive to reach its configured working batch mass.
     """
-    legacy = build_native_dynamic_simulation(definition, results, timestep_min=timestep_min, horizon_h=horizon_h)
-    sections = _section_specs(legacy)
-    order = {"pretreatment": 0, "hydrolysis": 1, "fermentation": 2}
-    sections.sort(key=lambda x: order[x["block_type"]])
-    if len(sections) < 3:
-        out = dict(legacy)
-        out.update({
-            "engine": "Bio-Agri connected dynamic plant engine",
-            "engine_version": "0.20.0-alpha",
-            "connected_material_transfers": False,
-            "status": "CONNECTED ENGINE REQUIRES PRETREATMENT, HYDROLYSIS AND FERMENTATION",
-        })
+    legacy=build_native_dynamic_simulation(definition,results,timestep_min=timestep_min,horizon_h=horizon_h)
+    sections=_section_specs(legacy)
+    if len(sections)<3:
+        out=dict(legacy)
+        out.update({"engine":"Bio-Agri direct-transfer dynamic plant engine","engine_version":"0.20.0-alpha2","connected_material_transfers":False})
         return out
 
-    pt, hy, fe = sections[:3]
-    buffer_pt_hy = BufferState("buffer_pt_hy", "Pretreatment to Hydrolysis Buffer", _buffer_capacity(hy, buffer_capacity_batches))
-    buffer_hy_fe = BufferState("buffer_hy_fe", "Hydrolysis to Fermentation Buffer", _buffer_capacity(fe, buffer_capacity_batches))
-    buffers = [buffer_pt_hy, buffer_hy_fe]
-
-    vessels: list[Vessel] = []
+    pt,hy,fe=sections[:3]
+    schedule_by_type={s["block_type"]:s for s in sections[:3]}
+    vessels=[]
     for sec in sections[:3]:
         for i in range(int(sec["installed_vessels"])):
-            vessels.append(Vessel(
-                vessel_id=f'{sec["block_id"]}-V{i+1:02d}',
-                section_id=sec["block_id"],
-                section_type=sec["block_type"],
-                batch_capacity_t=_f(sec["batch_mass_t"]),
-            ))
+            vessels.append(Vessel(f'{sec["block_id"]}-V{i+1:02d}',sec["block_id"],sec["block_type"],_f(sec["batch_mass_t"])))
 
-    schedule_by_type = {s["block_type"]: s for s in sections[:3]}
-    pumps: dict[str, PumpResource] = {}
+    pumps={}
     for sec in sections[:3]:
-        pumps[f'{sec["block_id"]}_in'] = PumpResource(f'{sec["block_id"]}_in', f'{sec["block_name"]} inlet transfer pump')
-        pumps[f'{sec["block_id"]}_out'] = PumpResource(f'{sec["block_id"]}_out', f'{sec["block_name"]} outlet transfer pump')
+        pumps[f'{sec["block_id"]}_in']=PumpResource(f'{sec["block_id"]}_in',f'{sec["block_name"]} inlet transfer pump')
+        pumps[f'{sec["block_id"]}_out']=PumpResource(f'{sec["block_id"]}_out',f'{sec["block_name"]} outlet transfer pump')
 
-    dt_h = max(1, int(timestep_min)) / 60.0
-    horizon_h = max(1.0, float(horizon_h))
-    timeline: list[dict] = []
-    events: list[dict] = []
-    completed_source_feed_t = 0.0
-    source_feed_started_t = 0.0
-    blocked_events = 0
-    starved_events = 0
+    dt=max(1,int(timestep_min))/60.0
+    horizon=max(1.0,float(horizon_h))
+    events=[];timeline=[]
+    source_feed_started=0.0;completed_source_feed=0.0
+    starvation_events=0;blocking_events=0
 
-    def set_state(v: Vessel, state: str, now: float, duration_h: float = 0.0, action: str | None = None) -> None:
-        v.state = state
-        v.state_until_h = now + max(0.0, duration_h)
-        v.pending_action = action
+    def set_state(v,state,now,dur=0.0,action=None):
+        v.state=state;v.state_until_h=now+max(0.0,dur);v.pending_action=action
 
-    def complete_due(v: Vessel, now: float) -> None:
-        nonlocal completed_source_feed_t
-        if now + 1e-9 < v.state_until_h:
-            return
-        action = v.pending_action
-        if v.state == "FILLING":
-            process_h = _processing_duration(schedule_by_type[v.section_type])
-            process_state = {
-                "pretreatment": "HEATING_PRETREATMENT",
-                "hydrolysis": "ENZYMATIC_HYDROLYSIS",
-                "fermentation": "FERMENTATION",
-            }[v.section_type]
-            set_state(v, process_state, now, process_h, "PROCESS_COMPLETE")
-            events.append({"time_h": now, "event": "FILL_COMPLETE", "vessel": v.vessel_id, "mass_t": v.batch_mass_t})
-        elif action == "PROCESS_COMPLETE":
-            set_state(v, "WAITING_FOR_DESTINATION", now)
-            events.append({"time_h": now, "event": "PROCESS_COMPLETE", "vessel": v.vessel_id})
-        elif v.state == "EMPTYING":
-            if v.section_type == "pretreatment":
-                buffer_pt_hy.add(v.batch_mass_t)
-            elif v.section_type == "hydrolysis":
-                buffer_hy_fe.add(v.batch_mass_t)
-            else:
-                completed_source_feed_t += v.source_feed_equivalent_t
-            events.append({"time_h": now, "event": "EMPTY_COMPLETE", "vessel": v.vessel_id, "mass_t": v.batch_mass_t})
-            v.batch_mass_t = 0.0
-            v.source_feed_equivalent_t = 0.0
-            set_state(v, "CIP_TURNAROUND", now, _cip_duration(schedule_by_type[v.section_type]), "CIP_COMPLETE")
-        elif action == "CIP_COMPLETE":
-            v.completed_batches += 1
-            set_state(v, "AVAILABLE", now)
+    def process_state(v):
+        return {"pretreatment":"HEATING_PRETREATMENT","hydrolysis":"ENZYMATIC_HYDROLYSIS","fermentation":"FERMENTATION"}[v.section_type]
 
-    def try_start_fill(v: Vessel, now: float) -> bool:
-        nonlocal source_feed_started_t, starved_events
-        if v.state not in {"AVAILABLE", "WAITING_FOR_FEED", "STARVED"}:
-            return False
-        sched = schedule_by_type[v.section_type]
-        mass = v.batch_capacity_t
-        pump = pumps[f'{v.section_id}_in']
-        if not pump.available(now):
-            pump.contention_count += 1
-            return False
-        if v.section_type == "pretreatment":
-            feed_equiv = mass
-        elif v.section_type == "hydrolysis":
-            if buffer_pt_hy.inventory_t + 1e-9 < mass:
-                if v.state != "STARVED":
-                    starved_events += 1
-                set_state(v, "STARVED", now)
-                return False
-            buffer_pt_hy.remove(mass)
-            feed_equiv = mass
+    def maybe_start_processing(v,now):
+        if v.batch_mass_t+1e-9 >= v.batch_capacity_t:
+            set_state(v,process_state(v),now,_processing_duration(schedule_by_type[v.section_type]),"PROCESS_COMPLETE")
+            events.append({"time_h":now,"event":"BATCH_READY","vessel":v.vessel_id,"mass_t":v.batch_mass_t})
         else:
-            if buffer_hy_fe.inventory_t + 1e-9 < mass:
-                if v.state != "STARVED":
-                    starved_events += 1
-                set_state(v, "STARVED", now)
-                return False
-            buffer_hy_fe.remove(mass)
-            feed_equiv = mass
-        dur = _f(sched.get("fill_time_h"), 0.0)
-        pump.reserve(now, dur, v.vessel_id)
-        v.batch_mass_t = mass
-        v.source_feed_equivalent_t = feed_equiv
-        if v.section_type == "pretreatment":
-            source_feed_started_t += mass
-        set_state(v, "FILLING", now, dur, "FILL_COMPLETE")
-        events.append({"time_h": now, "event": "FILL_START", "vessel": v.vessel_id, "mass_t": mass, "pump": pump.pump_id})
-        return True
+            set_state(v,"WAITING_FOR_FEED",now)
 
-    def try_start_empty(v: Vessel, now: float) -> bool:
-        nonlocal blocked_events
-        if v.state not in {"WAITING_FOR_DESTINATION", "BLOCKED"}:
-            return False
-        sched = schedule_by_type[v.section_type]
-        pump = pumps[f'{v.section_id}_out']
+    def complete_due(v,now):
+        nonlocal completed_source_feed
+        if now+1e-9 < v.state_until_h:return
+        if v.pending_action=="SOURCE_FILL_COMPLETE":
+            maybe_start_processing(v,now)
+        elif v.pending_action=="PROCESS_COMPLETE":
+            set_state(v,"WAITING_FOR_DESTINATION",now)
+            events.append({"time_h":now,"event":"PROCESS_COMPLETE","vessel":v.vessel_id})
+        elif v.pending_action=="TRANSFER_COMPLETE":
+            src=next(x for x in vessels if x.vessel_id==v.transfer_source_id)
+            transferred=src.batch_mass_t
+            v.batch_mass_t += transferred
+            v.source_feed_equivalent_t += src.source_feed_equivalent_t
+            events.append({"time_h":now,"event":"DIRECT_TRANSFER_COMPLETE","from":src.vessel_id,"to":v.vessel_id,"mass_t":transferred})
+            src.batch_mass_t=0.0;src.source_feed_equivalent_t=0.0
+            src.transfer_source_id=None
+            set_state(src,"CIP_TURNAROUND",now,_cip_duration(schedule_by_type[src.section_type]),"CIP_COMPLETE")
+            v.transfer_source_id=None
+            maybe_start_processing(v,now)
+        elif v.pending_action=="FINAL_EMPTY_COMPLETE":
+            completed_source_feed += v.source_feed_equivalent_t
+            events.append({"time_h":now,"event":"FINAL_DISCHARGE_COMPLETE","vessel":v.vessel_id,"mass_t":v.batch_mass_t})
+            v.batch_mass_t=0.0;v.source_feed_equivalent_t=0.0
+            set_state(v,"CIP_TURNAROUND",now,_cip_duration(schedule_by_type[v.section_type]),"CIP_COMPLETE")
+        elif v.pending_action=="CIP_COMPLETE":
+            v.completed_batches+=1
+            set_state(v,"AVAILABLE",now)
+
+    def try_source_fill(v,now):
+        nonlocal source_feed_started
+        if v.section_type!="pretreatment" or v.state!="AVAILABLE":return False
+        pump=pumps[f'{v.section_id}_in']
         if not pump.available(now):
-            pump.contention_count += 1
-            return False
-        if v.section_type == "pretreatment":
-            if buffer_pt_hy.capacity_t - buffer_pt_hy.inventory_t + 1e-9 < v.batch_mass_t:
-                if v.state != "BLOCKED":
-                    blocked_events += 1
-                set_state(v, "BLOCKED", now)
-                return False
-        elif v.section_type == "hydrolysis":
-            if buffer_hy_fe.capacity_t - buffer_hy_fe.inventory_t + 1e-9 < v.batch_mass_t:
-                if v.state != "BLOCKED":
-                    blocked_events += 1
-                set_state(v, "BLOCKED", now)
-                return False
-        dur = _f(sched.get("empty_time_h"), 0.0)
-        pump.reserve(now, dur, v.vessel_id)
-        set_state(v, "EMPTYING", now, dur, "EMPTY_COMPLETE")
-        events.append({"time_h": now, "event": "EMPTY_START", "vessel": v.vessel_id, "mass_t": v.batch_mass_t, "pump": pump.pump_id})
+            pump.contention_count+=1;return False
+        dur=_f(schedule_by_type[v.section_type].get("fill_time_h"))
+        pump.reserve(now,dur,v.vessel_id)
+        v.batch_mass_t=v.batch_capacity_t;v.source_feed_equivalent_t=v.batch_capacity_t
+        source_feed_started += v.batch_capacity_t
+        set_state(v,"FILLING",now,dur,"SOURCE_FILL_COMPLETE")
+        events.append({"time_h":now,"event":"SOURCE_FILL_START","vessel":v.vessel_id,"mass_t":v.batch_capacity_t})
         return True
 
-    t = 0.0
-    while t < horizon_h - 1e-9:
-        for v in vessels:
-            complete_due(v, t)
+    def downstream_candidates(section_type):
+        next_type={"pretreatment":"hydrolysis","hydrolysis":"fermentation"}.get(section_type)
+        if not next_type:return []
+        return [v for v in vessels if v.section_type==next_type and v.state in {"AVAILABLE","WAITING_FOR_FEED","STARVED"}]
 
-        for section_type in ("fermentation", "hydrolysis", "pretreatment"):
+    def try_direct_transfer(src,now):
+        nonlocal blocking_events
+        if src.state not in {"WAITING_FOR_DESTINATION","BLOCKED"}:return False
+        if src.section_type=="fermentation":
+            pump=pumps[f'{src.section_id}_out']
+            if not pump.available(now):
+                pump.contention_count+=1;return False
+            dur=_f(schedule_by_type[src.section_type].get("empty_time_h"))
+            pump.reserve(now,dur,src.vessel_id)
+            set_state(src,"EMPTYING",now,dur,"FINAL_EMPTY_COMPLETE")
+            events.append({"time_h":now,"event":"FINAL_DISCHARGE_START","vessel":src.vessel_id,"mass_t":src.batch_mass_t})
+            return True
+
+        candidates=downstream_candidates(src.section_type)
+        dest=None
+        for d in candidates:
+            remaining=d.batch_capacity_t-d.batch_mass_t
+            if remaining+1e-9 >= src.batch_mass_t:
+                dest=d;break
+        if dest is None:
+            if src.state!="BLOCKED":blocking_events+=1
+            set_state(src,"BLOCKED",now)
+            return False
+
+        outp=pumps[f'{src.section_id}_out']; inp=pumps[f'{dest.section_id}_in']
+        if not outp.available(now) or not inp.available(now):
+            if not outp.available(now):outp.contention_count+=1
+            if not inp.available(now):inp.contention_count+=1
+            return False
+
+        out_rate=_f(schedule_by_type[src.section_type].get("outlet_transfer_pump_rate_m3ph"))
+        in_rate=_f(schedule_by_type[dest.section_type].get("inlet_transfer_pump_rate_m3ph"))
+        mass=src.batch_mass_t
+        dur=max(mass/max(out_rate,1e-9),mass/max(in_rate,1e-9))
+        outp.reserve(now,dur,src.vessel_id);inp.reserve(now,dur,dest.vessel_id)
+        set_state(src,"EMPTYING",now,dur,"TRANSFER_SOURCE_WAIT")
+        dest.transfer_source_id=src.vessel_id
+        set_state(dest,"FILLING",now,dur,"TRANSFER_COMPLETE")
+        events.append({"time_h":now,"event":"DIRECT_TRANSFER_START","from":src.vessel_id,"to":dest.vessel_id,"mass_t":mass})
+        return True
+
+    t=0.0
+    while t<horizon-1e-9:
+        for v in vessels: complete_due(v,t)
+
+        for typ in ("fermentation","hydrolysis","pretreatment"):
             for v in vessels:
-                if v.section_type == section_type:
-                    try_start_empty(v, t)
+                if v.section_type==typ: try_direct_transfer(v,t)
 
-        for section_type in ("pretreatment", "hydrolysis", "fermentation"):
-            for v in vessels:
-                if v.section_type == section_type:
-                    try_start_fill(v, t)
+        for v in vessels: try_source_fill(v,t)
 
         for v in vessels:
-            v.state_time_h[v.state] = v.state_time_h.get(v.state, 0.0) + dt_h
+            if v.section_type!="pretreatment" and v.state=="AVAILABLE":
+                v.state="STARVED"
+                starvation_events+=1
+            v.state_time_h[v.state]=v.state_time_h.get(v.state,0.0)+dt
 
         timeline.append({
-            "time_h": round(t, 6),
-            "states": {
-                sec["block_id"]: [v.state for v in vessels if v.section_id == sec["block_id"]]
-                for sec in sections[:3]
-            },
-            "buffer_inventory_t": {
-                buffer_pt_hy.buffer_id: buffer_pt_hy.inventory_t,
-                buffer_hy_fe.buffer_id: buffer_hy_fe.inventory_t,
-            },
-            "pump_owner": {pid: (p.owner if not p.available(t) else None) for pid, p in pumps.items()},
-            "completed_source_feed_t": completed_source_feed_t,
+            "time_h":round(t,6),
+            "states":{sec["block_id"]:[v.state for v in vessels if v.section_id==sec["block_id"]] for sec in sections[:3]},
+            "vessel_inventory_t":{v.vessel_id:v.batch_mass_t for v in vessels},
+            "vessel_fill_fraction":{v.vessel_id:(v.batch_mass_t/v.batch_capacity_t if v.batch_capacity_t>0 else 0.0) for v in vessels},
+            "pump_owner":{pid:(p.owner if not p.available(t) else None) for pid,p in pumps.items()},
+            "completed_source_feed_t":completed_source_feed,
         })
-        t += dt_h
+        t+=dt
 
-    ethanol_ratio = _ethanol_ratio(results, pt)
-    ethanol_t = completed_source_feed_t * ethanol_ratio
-    connected_feed_tph = completed_source_feed_t / horizon_h if horizon_h > 0 else 0.0
-    ethanol_tph = ethanol_t / horizon_h if horizon_h > 0 else 0.0
-    ethanol_density_t_per_m3 = 0.78937
-    ethanol_Lph = ethanol_tph / ethanol_density_t_per_m3 * 1000.0 if ethanol_density_t_per_m3 > 0 else 0.0
+    ratio=_ethanol_ratio(results,pt)
+    ethanol_t=completed_source_feed*ratio
+    feed_tph=completed_source_feed/horizon
+    ethanol_tph=ethanol_t/horizon
+    ethanol_Lph=ethanol_tph/0.78937*1000.0
+    source_in_system=sum(v.source_feed_equivalent_t for v in vessels)
+    mass_error=source_feed_started-completed_source_feed-source_in_system
 
-    source_in_system_t = sum(v.source_feed_equivalent_t for v in vessels) + buffer_pt_hy.inventory_t + buffer_hy_fe.inventory_t
-    mass_balance_error_t = source_feed_started_t - completed_source_feed_t - source_in_system_t
-
-    out = dict(legacy)
+    out=dict(legacy)
     out.update({
-        "engine": "Bio-Agri connected dynamic plant engine",
-        "engine_version": "0.20.0-alpha",
-        "connected_material_transfers": True,
-        "legacy_scheduler_comparison": {
-            "engine_version": legacy.get("engine_version"),
-            "maximum_feed_multiplier_before_batch_capacity_limit": legacy.get("maximum_feed_multiplier_before_batch_capacity_limit"),
+        "engine":"Bio-Agri direct-transfer dynamic plant engine",
+        "engine_version":"0.20.0-alpha2",
+        "connected_material_transfers":True,
+        "intermediate_buffers_assumed":False,
+        "shared_pumps":[asdict(p) for p in pumps.values()],
+        "event_log":events,
+        "timeline":timeline,
+        "connected_throughput":{
+            "source_feed_started_t":source_feed_started,
+            "source_feed_completed_t":completed_source_feed,
+            "average_completed_feed_tph":feed_tph,
+            "ethanol_product_t":ethanol_t,
+            "ethanol_product_tph":ethanol_tph,
+            "ethanol_product_Lph":ethanol_Lph,
+            "ethanol_product_L_per_8000h_year":ethanol_Lph*8000.0,
+            "mass_balance_error_t":mass_error,
         },
-        "buffers": [asdict(b) for b in buffers],
-        "shared_pumps": [asdict(p) for p in pumps.values()],
-        "event_log": events,
-        "timeline": timeline,
-        "connected_throughput": {
-            "source_feed_started_t": source_feed_started_t,
-            "source_feed_completed_t": completed_source_feed_t,
-            "average_completed_feed_tph": connected_feed_tph,
-            "ethanol_product_t": ethanol_t,
-            "ethanol_product_tph": ethanol_tph,
-            "ethanol_product_Lph": ethanol_Lph,
-            "ethanol_product_L_per_8000h_year": ethanol_Lph * 8000.0,
-            "mass_balance_error_t": mass_balance_error_t,
+        "operability":{
+            "starvation_events":starvation_events,
+            "blocking_events":blocking_events,
+            "pump_contention_events":sum(p.contention_count for p in pumps.values()),
+            "vessels":[{"vessel_id":v.vessel_id,"section_id":v.section_id,"completed_batches":v.completed_batches,"final_inventory_t":v.batch_mass_t,"state_time_h":dict(v.state_time_h)} for v in vessels],
         },
-        "operability": {
-            "starvation_events": starved_events,
-            "blocking_events": blocked_events,
-            "pump_contention_events": sum(p.contention_count for p in pumps.values()),
-            "vessels": [
-                {
-                    "vessel_id": v.vessel_id,
-                    "section_id": v.section_id,
-                    "completed_batches": v.completed_batches,
-                    "state_time_h": dict(v.state_time_h),
-                }
-                for v in vessels
-            ],
-        },
-        "status": "V0.20 CONNECTED DISCRETE-EVENT ENGINEERING SCREENING",
-        "notes": list(legacy.get("notes", [])) + [
-            "V0.20 enforces causal batch hand-offs between pretreatment, hydrolysis and fermentation.",
-            "Intermediate buffers have finite capacity; vessels can become STARVED or BLOCKED.",
-            "Each batch section has one shared inlet and one shared outlet transfer-pump resource, so simultaneous transfers contend for that resource.",
-            "Connected transfer inventory is tracked on a hydraulic wet-mass basis; transient reaction chemistry remains represented by the steady-state block calculations.",
-            "The V0.19 independently staggered scheduler remains available internally as a comparison baseline.",
+        "status":"V0.20 DIRECT VESSEL-TO-VESSEL DISCRETE-EVENT SCREENING",
+        "notes":list(legacy.get("notes",[]))+[
+            "No intermediate buffer vessels are assumed by V0.20.",
+            "Pretreatment transfers directly into hydrolysis vessels; hydrolysis transfers directly into fermentation vessels.",
+            "Downstream vessels may accumulate partial direct fills where upstream and downstream batch sizes differ.",
+            "An upstream vessel remains BLOCKED until a downstream vessel has sufficient free capacity.",
+            "Reaction chemistry and utility calculations remain based on the validated steady-state/V0.19 engineering model during this alpha.",
         ],
     })
     return out
