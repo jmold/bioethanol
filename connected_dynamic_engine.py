@@ -94,7 +94,7 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
     sections=_section_specs(legacy)
     if len(sections)<3:
         out=dict(legacy)
-        out.update({"engine":"Bio-Agri direct-transfer dynamic plant engine","engine_version":"0.20.0-alpha2","connected_material_transfers":False})
+        out.update({"engine":"Bio-Agri direct-transfer dynamic plant engine","engine_version":"0.20.0","connected_material_transfers":False})
         return out
 
     pt,hy,fe=sections[:3]
@@ -253,7 +253,7 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
     out=dict(legacy)
     out.update({
         "engine":"Bio-Agri direct-transfer dynamic plant engine",
-        "engine_version":"0.20.0-alpha2",
+        "engine_version":"0.20.0",
         "connected_material_transfers":True,
         "intermediate_buffers_assumed":False,
         "shared_pumps":[asdict(p) for p in pumps.values()],

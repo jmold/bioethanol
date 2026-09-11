@@ -86,7 +86,7 @@ def connected_plant(payload: FlowsheetPayload):
 def v020_meta():
     return {
         "application": "Bio-Agri Process Simulator",
-        "model_version": "0.20.0-alpha2",
+        "model_version": "0.20.0",
         "engine": "direct vessel-to-vessel discrete-event plant engine",
         "connected_material_transfers": True,
         "intermediate_buffers_assumed": False,
