@@ -1,15 +1,73 @@
 """V0.20 API extension for the connected discrete-event plant engine.
 
-The existing V0.19 API remains intact for regression comparison.  The desktop
-entry point imports this module, which adds the connected-engine endpoint to
-the same FastAPI application.
+The steady-state V0.19 engineering model remains authoritative for chemistry,
+thermodynamics and utilities. V0.20 replaces only the time-domain plant payload
+with the connected event engine, while retaining legacy comparison metadata.
 """
 
 from fastapi import HTTPException
 
 from api import app, FlowsheetPayload, validate_flowsheet_definition
 from flowsheet import Flowsheet
+from native_dynamic_engine import build_native_dynamic_simulation
 from connected_dynamic_engine import build_connected_dynamic_simulation
+
+
+def _remove_post_route(path: str) -> None:
+    app.router.routes[:] = [
+        route for route in app.router.routes
+        if not (getattr(route, "path", None) == path and "POST" in (getattr(route, "methods", set()) or set()))
+    ]
+
+
+def _connected_payload(definition: dict, result: dict) -> dict:
+    """Build V0.20 and retain V0.19 utility readings on the common time grid."""
+    legacy = build_native_dynamic_simulation(definition, result)
+    connected = build_connected_dynamic_simulation(definition, result)
+    legacy_rows = legacy.get("timeline", [])
+    for index, row in enumerate(connected.get("timeline", [])):
+        if index >= len(legacy_rows):
+            break
+        legacy_row = legacy_rows[index]
+        for key in (
+            "thermal_gross_kW",
+            "available_heat_recovery_kW",
+            "used_heat_recovery_kW",
+            "net_external_thermal_kW",
+            "electrical_kW",
+            "cooling_kW",
+            "active_pretreatment_heatups",
+            "active_hot_discharges",
+        ):
+            row[key] = legacy_row.get(key, 0.0)
+    connected["legacy_scheduler_comparison"]["utility_basis"] = "V0.19 time-domain utility model retained during V0.20-alpha"
+    return connected
+
+
+# Replace the two V0.19 time-domain endpoints only when this extension is loaded.
+_remove_post_route("/api/run")
+_remove_post_route("/api/dynamic-plant")
+
+
+@app.post("/api/run")
+def run_flowsheet_v020(payload: FlowsheetPayload):
+    definition = validate_flowsheet_definition(payload.flowsheet)
+    try:
+        result = Flowsheet(definition).run()
+        result["dynamic_plant"] = _connected_payload(definition, result)
+        return result
+    except (KeyError, TypeError, ValueError, ZeroDivisionError, RuntimeError) as exc:
+        raise HTTPException(status_code=422, detail=f"The V0.20 model could not calculate this flowsheet: {exc}") from exc
+
+
+@app.post("/api/dynamic-plant")
+def dynamic_plant_v020(payload: FlowsheetPayload):
+    definition = validate_flowsheet_definition(payload.flowsheet)
+    try:
+        result = Flowsheet(definition).run()
+        return _connected_payload(definition, result)
+    except (KeyError, TypeError, ValueError, ZeroDivisionError, RuntimeError) as exc:
+        raise HTTPException(status_code=422, detail=f"The V0.20 connected plant engine could not calculate this flowsheet: {exc}") from exc
 
 
 @app.post("/api/connected-plant")
@@ -17,7 +75,7 @@ def connected_plant(payload: FlowsheetPayload):
     definition = validate_flowsheet_definition(payload.flowsheet)
     try:
         result = Flowsheet(definition).run()
-        return build_connected_dynamic_simulation(definition, result)
+        return _connected_payload(definition, result)
     except (KeyError, TypeError, ValueError, ZeroDivisionError, RuntimeError) as exc:
         raise HTTPException(status_code=422, detail=f"The V0.20 connected plant engine could not calculate this flowsheet: {exc}") from exc
 
@@ -30,4 +88,5 @@ def v020_meta():
         "engine": "connected discrete-event plant engine",
         "connected_material_transfers": True,
         "legacy_model_retained": "0.19.0",
+        "chemistry_utility_basis": "V0.19 retained during alpha",
     }
