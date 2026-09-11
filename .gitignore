@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+__pycache__/
+*.pyc
+src-tauri/target/
+desktop/backend/*.exe
+*.key
+*.key.pub
+.env
+.venv/
+sources/
+output/
+AGENTS.md
+.env.*

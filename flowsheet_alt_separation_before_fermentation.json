@@ -1,0 +1,433 @@
+{
+  "name": "Alternative route \u2014 separation before fermentation",
+  "blocks": [
+    {
+      "id": "feed",
+      "type": "feed_preparation",
+      "name": "Feed Preparation",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "params": {
+        "dry_miscanthus_tph": 3.0,
+        "incoming_moisture_wet_fraction": 0.15,
+        "target_slurry_dry_matter_fraction": 0.2,
+        "maceration_grit_reject_fraction": 0.005,
+        "dry_feed_composition": {
+          "glucan": 0.4287,
+          "xylan": 0.2202,
+          "lignin": 0.1967,
+          "ash": 0.0233,
+          "other_organics": 0.1311
+        },
+        "specific_drive_kWh_per_t_dry": 12.0,
+        "drive_basis_status": "PROVISIONAL ENGINEERING ASSUMPTION"
+      }
+    },
+    {
+      "id": "pretreat",
+      "type": "pretreatment",
+      "name": "Pretreatment",
+      "position": {
+        "x": 220,
+        "y": 0
+      },
+      "params": {
+        "design_status": "OPEN DESIGN DECISION",
+        "temperature_C_placeholder": 180.0,
+        "pressure_bar_abs_placeholder": 10.0,
+        "retention_surrogates": {
+          "glucan": 0.967,
+          "xylan": 0.21199999999999997,
+          "lignin": 0.804
+        },
+        "slurry_cp_kJ_per_kgK": 3.644,
+        "gross_heat_recovery_fraction": 0.75,
+        "design_heat_allowance_fraction": 0.15,
+        "useful_steam_enthalpy_kJ_per_kg": 2100.0,
+        "reactor_working_volume_m3": 50.0,
+        "slurry_density_t_per_m3": 1.0,
+        "hold_time_h": 1.0,
+        "heat_up_time_h": 1.5,
+        "cip_turnaround_h": 0.5,
+        "inlet_transfer_pump_rate_m3ph": 15.0,
+        "outlet_transfer_pump_rate_m3ph": 15.0,
+        "inlet_transfer_pump_kW": 0.0,
+        "outlet_transfer_pump_kW": 0.0
+      }
+    },
+    {
+      "id": "hydro",
+      "type": "hydrolysis",
+      "name": "Hydrolysis",
+      "position": {
+        "x": 440,
+        "y": 0
+      },
+      "params": {
+        "temperature_C": 50.0,
+        "glucan_to_glucose_conversion_fraction": 0.7674,
+        "residence_time_h": 72.0,
+        "slurry_density_t_per_m3": 1.0,
+        "specific_agitation_kW_per_m3": 0.35,
+        "heat_loss_kW_per_m3": 0.0,
+        "vessel_working_volume_m3": 100.0,
+        "availability_fraction": 0.9,
+        "turnaround_h": 2.0,
+        "inlet_transfer_pump_rate_m3ph": 15.0,
+        "outlet_transfer_pump_rate_m3ph": 15.0,
+        "inlet_transfer_pump_kW": 0.0,
+        "outlet_transfer_pump_kW": 0.0
+      }
+    },
+    {
+      "id": "ferm",
+      "type": "fermentation",
+      "name": "Fermentation",
+      "position": {
+        "x": 880,
+        "y": 0
+      },
+      "params": {
+        "temperature_C": 32.0,
+        "fraction_theoretical_ethanol_yield": 0.95,
+        "residence_time_h": 48.0,
+        "broth_density_t_per_m3": 1.0,
+        "specific_agitation_kW_per_m3": 0.1,
+        "cip_water_fraction_of_working_volume_per_cycle": 0.0,
+        "vessel_working_volume_m3": 100.0,
+        "availability_fraction": 0.9,
+        "turnaround_h": 2.0,
+        "fermentation_heat_release_kJ_per_mol_glucose": 55.0,
+        "inlet_transfer_pump_rate_m3ph": 15.0,
+        "outlet_transfer_pump_rate_m3ph": 15.0,
+        "inlet_transfer_pump_kW": 0.0,
+        "outlet_transfer_pump_kW": 0.0
+      }
+    },
+    {
+      "id": "sep",
+      "type": "solids_separation",
+      "name": "Solids Separation",
+      "position": {
+        "x": 660,
+        "y": 0
+      },
+      "params": {
+        "cake_dry_matter_fraction": 0.4,
+        "dissolved_solute_entrainment_fraction": 0.05,
+        "specific_power_kWh_per_t_feed": 1.5
+      }
+    },
+    {
+      "id": "beer",
+      "type": "beer_column",
+      "name": "Beer Column",
+      "position": {
+        "x": 1100,
+        "y": 0
+      },
+      "params": {
+        "ethanol_recovery_fraction": 0.992,
+        "overhead_ethanol_wt_fraction": 0.4,
+        "feed_temperature_C": 32.0,
+        "preheat_target_C": 90.0,
+        "feed_cp_kJ_per_kgK": 4.0,
+        "feed_preheat_recovery_fraction": 1.0,
+        "specific_reboiler_kWh_per_kg_ethanol": 0.0,
+        "condenser_fraction_of_reboiler": 0.0,
+        "useful_steam_enthalpy_kJ_per_kg": 2100.0
+      }
+    },
+    {
+      "id": "rect",
+      "type": "rectifier",
+      "name": "Rectifier",
+      "position": {
+        "x": 1320,
+        "y": 0
+      },
+      "params": {
+        "overhead_ethanol_wt_fraction": 0.925,
+        "ethanol_recovery_fraction": 1.0,
+        "specific_reboiler_kWh_per_kg_ethanol": 0.0,
+        "condenser_fraction_of_reboiler": 0.0,
+        "useful_steam_enthalpy_kJ_per_kg": 2100.0
+      }
+    },
+    {
+      "id": "sieve",
+      "type": "molecular_sieve",
+      "name": "Molecular Sieve",
+      "position": {
+        "x": 1540,
+        "y": 0
+      },
+      "params": {
+        "product_ethanol_wt_fraction": 0.995,
+        "ethanol_product_recovery_fraction": 1.0,
+        "specific_regeneration_kWh_per_kg_product": 0.0
+      }
+    },
+    {
+      "id": "ethanol_product",
+      "type": "product_sink",
+      "name": "Anhydrous Ethanol Product",
+      "params": {},
+      "position": {
+        "x": 1760,
+        "y": 0
+      }
+    },
+    {
+      "id": "fermentation_vent",
+      "type": "vent_sink",
+      "name": "Fermentation CO2 Vent",
+      "params": {},
+      "position": {
+        "x": 880,
+        "y": -180
+      }
+    },
+    {
+      "id": "solid_terminal",
+      "type": "solid_sink",
+      "name": "Residue Solids",
+      "params": {
+        "classification": "PRODUCT"
+      },
+      "position": {
+        "x": 1100,
+        "y": 180
+      }
+    },
+    {
+      "id": "beer_bottoms",
+      "type": "wastewater_sink",
+      "name": "Beer Column Bottoms",
+      "params": {},
+      "position": {
+        "x": 1320,
+        "y": 180
+      }
+    },
+    {
+      "id": "rect_bottoms",
+      "type": "wastewater_sink",
+      "name": "Rectifier Bottoms",
+      "params": {},
+      "position": {
+        "x": 1540,
+        "y": 180
+      }
+    },
+    {
+      "id": "sieve_recycle",
+      "type": "recycle_sink",
+      "name": "Sieve Recycle Placeholder",
+      "params": {},
+      "position": {
+        "x": 1760,
+        "y": 180
+      }
+    },
+    {
+      "id": "feed_rejects_terminal",
+      "type": "solid_sink",
+      "name": "Feed Preparation Rejects",
+      "params": {
+        "classification": "WASTE"
+      },
+      "position": {
+        "x": 220,
+        "y": 180
+      }
+    },
+    {
+      "id": "sep_wash_water",
+      "type": "material_dose",
+      "name": "Separator Wash Water",
+      "params": {
+        "component": "water",
+        "mass_tph": 0.2,
+        "status": "PROVISIONAL ENGINEERING ASSUMPTION",
+        "basis": "Scenario wash-water allowance",
+        "confidence": "LOW",
+        "note": "Sensitivity input only; not selected commercial design."
+      },
+      "position": {
+        "x": 840,
+        "y": 260
+      }
+    },
+    {
+      "id": "pretreat_chemical",
+      "type": "material_dose",
+      "name": "Pretreatment Chemical",
+      "params": {
+        "component": "pretreatment_chemical",
+        "mass_tph": 0.0,
+        "status": "OPEN DESIGN DECISION",
+        "basis": "Pretreatment chemistry unselected",
+        "confidence": "LOW",
+        "note": "Zero/inactive until commercial route selected."
+      },
+      "position": {
+        "x": 380,
+        "y": 260
+      }
+    },
+    {
+      "id": "enzyme_basis",
+      "type": "enzyme_dose",
+      "name": "Hydrolysis Enzyme Basis",
+      "params": {
+        "loading_FPU_per_g_glucan": 15.0,
+        "product_activity_FPU_per_mL": 0.0,
+        "product_density_kg_per_L": 1.0,
+        "source": "Miscanthus \u00d7 giganteus organosolv study: 15 FPU/g-glucan; other Miscanthus work uses 20 FPU/g-glucan."
+      },
+      "position": {
+        "x": 650,
+        "y": 280
+      }
+    },
+    {
+      "id": "nutrient_basis",
+      "type": "nutrient_dose",
+      "name": "Fermentation Nutrient Basis",
+      "params": {
+        "assimilable_N_target_g_per_L": 0.4,
+        "nutrient_source_N_mass_fraction": 0.0,
+        "broth_density_t_per_m3": 1.0,
+        "source": "Nitrogen supplementation literature; screening value only."
+      },
+      "position": {
+        "x": 870,
+        "y": 280
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "S101",
+      "from_block": "feed",
+      "from_port": "slurry",
+      "to_block": "pretreat",
+      "to_port": "feed"
+    },
+    {
+      "id": "S201",
+      "from_block": "pretreat",
+      "from_port": "slurry",
+      "to_block": "hydro",
+      "to_port": "feed"
+    },
+    {
+      "id": "S401",
+      "from_block": "hydro",
+      "from_port": "hydrolysate",
+      "to_block": "sep",
+      "to_port": "feed"
+    },
+    {
+      "id": "S601L",
+      "from_block": "sep",
+      "from_port": "liquid",
+      "to_block": "ferm",
+      "to_port": "feed"
+    },
+    {
+      "id": "S501",
+      "from_block": "ferm",
+      "from_port": "broth",
+      "to_block": "beer",
+      "to_port": "feed"
+    },
+    {
+      "id": "S801",
+      "from_block": "beer",
+      "from_port": "overhead",
+      "to_block": "rect",
+      "to_port": "feed"
+    },
+    {
+      "id": "S901",
+      "from_block": "rect",
+      "from_port": "overhead",
+      "to_block": "sieve",
+      "to_port": "feed"
+    },
+    {
+      "id": "S502",
+      "from_block": "ferm",
+      "from_port": "co2",
+      "to_block": "fermentation_vent",
+      "to_port": "feed"
+    },
+    {
+      "id": "S601C",
+      "from_block": "sep",
+      "from_port": "cake",
+      "to_block": "solid_terminal",
+      "to_port": "feed"
+    },
+    {
+      "id": "S802B",
+      "from_block": "beer",
+      "from_port": "bottoms",
+      "to_block": "beer_bottoms",
+      "to_port": "feed"
+    },
+    {
+      "id": "S902B",
+      "from_block": "rect",
+      "from_port": "bottoms",
+      "to_block": "rect_bottoms",
+      "to_port": "feed"
+    },
+    {
+      "id": "S1001",
+      "from_block": "sieve",
+      "from_port": "product",
+      "to_block": "ethanol_product",
+      "to_port": "feed"
+    },
+    {
+      "id": "S1002",
+      "from_block": "sieve",
+      "from_port": "recycle",
+      "to_block": "sieve_recycle",
+      "to_port": "feed"
+    },
+    {
+      "id": "S102R",
+      "from_block": "feed",
+      "from_port": "rejects",
+      "to_block": "feed_rejects_terminal",
+      "to_port": "feed"
+    },
+    {
+      "id": "S601W",
+      "from_block": "sep_wash_water",
+      "from_port": "dose",
+      "to_block": "sep",
+      "to_port": "wash_water"
+    },
+    {
+      "id": "EVID_ENZ",
+      "from_block": "pretreat",
+      "from_port": "slurry",
+      "to_block": "enzyme_basis",
+      "to_port": "substrate"
+    },
+    {
+      "id": "EVID_NUT",
+      "from_block": "sep",
+      "from_port": "liquid",
+      "to_block": "nutrient_basis",
+      "to_port": "broth_basis"
+    }
+  ]
+}

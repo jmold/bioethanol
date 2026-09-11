@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "BioAgri Process Simulator",
+  "version": "0.19.0",
+  "identifier": "com.bioagri.processsimulator",
+  "build": {
+    "beforeBuildCommand": "npm run build:desktop-web",
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "BioAgri Process Simulator",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 1050,
+        "minHeight": 700,
+        "center": true,
+        "useHttpsScheme": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": ["nsis", "msi"],
+    "icon": ["icons/icon.ico"],
+    "resources": {
+      "../desktop/backend/bioagri-backend.exe": "backend/bioagri-backend.exe"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ5QzNBNDI5MzM3MUM2QUIKUldTcnhuRXpLYVREMlI5VEFTMlBIVi83LzFvWHBVNHp3aUx4akM2MUkrYy84NXFTbFMrRWU2SEYK",
+      "endpoints": ["https://github.com/jmold/bioethanol/releases/latest/download/latest.json"],
+      "windows": {"installMode": "passive"}
+    }
+  }
+}

@@ -1,0 +1,52 @@
+name: Release Windows application
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "app-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Python build dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build bundled calculation engine
+        run: |
+          pyinstaller --clean --noconfirm bioagri-backend.spec
+          New-Item -ItemType Directory -Force desktop/backend | Out-Null
+          Copy-Item dist/bioagri-backend.exe desktop/backend/bioagri-backend.exe -Force
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and publish signed Windows release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: app-v__VERSION__
+          releaseName: "BioAgri Process Simulator v__VERSION__"
+          releaseBody: "Signed Windows release for the BioAgri Process Simulator. Existing installations will be offered this update automatically."
+          releaseDraft: false
+          prerelease: false
+          args: --bundles nsis
+

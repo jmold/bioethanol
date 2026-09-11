@@ -1,0 +1,28 @@
+{
+  "name": "bioagri-process-simulator-ui",
+  "version": "0.3.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "build:web": "vite build",
+    "build:desktop-web": "vite build --mode desktop",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@tauri-apps/plugin-http": "^2.6.0",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.11.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "@xyflow/react": "12.11.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "typescript": "7.0.2",
+    "vite": "8.2.2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}
