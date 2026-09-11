@@ -1,0 +1,40 @@
+name: Prepare V0.20 release
+
+on:
+  push:
+    branches:
+      - v0.20-connected-engine
+    paths:
+      - scripts/prepare_v020_release.py
+      - .github/workflows/prepare-v020-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v0.20-connected-engine
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Promote V0.20 versions
+        run: python scripts/prepare_v020_release.py
+      - name: Refresh Cargo lock
+        run: cargo update -p bioagri-process-simulator --precise 0.20.0 || true
+        working-directory: src-tauri
+      - name: Commit release metadata
+        run: |
+          if git diff --quiet; then
+            echo "No release metadata changes required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add api.py api_v020.py connected_dynamic_engine.py test_connected_dynamic_engine.py test_v020_api.py src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock package.json RUN_SIMULATOR_WINDOWS.bat README.md
+          git commit -m "Promote BioAgri Process Simulator to v0.20.0"
+          git push origin HEAD:v0.20-connected-engine
