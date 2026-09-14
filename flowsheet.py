@@ -283,6 +283,8 @@ class Flowsheet:
         terms={}
         for c in self.connections:
             if self.blocks.get(c.to_block) and self.blocks[c.to_block].type in terminal_types:
+                if self.blocks[c.to_block].type=="recycle_sink" and self.blocks[c.to_block].params.get("internal_recycle",False):
+                    continue
                 s=self.streams.get(f"{c.from_block}.{c.from_port}")
                 if s:
                     terms[f"{c.from_block}.{c.from_port}->{c.to_block}"]=s
