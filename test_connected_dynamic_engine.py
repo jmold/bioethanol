@@ -16,7 +16,7 @@ class ConnectedDynamicEngineTests(unittest.TestCase):
         cls.connected=build_connected_dynamic_simulation(cls.definition,cls.result,timestep_min=15,horizon_h=168)
 
     def test_connected_engine_identity(self):
-        self.assertEqual(self.connected["engine_version"],"0.20.1")
+        self.assertEqual(self.connected["engine_version"],"0.20.2")
         self.assertTrue(self.connected["connected_material_transfers"])
         self.assertFalse(self.connected["intermediate_buffers_assumed"])
         self.assertNotIn("buffers",self.connected)
