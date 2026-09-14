@@ -404,13 +404,38 @@ function App(){
   }
 
   async function refreshSaved(){try{const r=await apiFetch(`${API}/api/saved`);if(r.ok)setSavedFlows(await r.json())}catch{}}
-  async function saveCurrent(nameOverride?:string){
+  async function saveCurrent(forceSaveAs=false){
     if(!flow)return
-    const name=(nameOverride??flow.name)?.trim()||'Untitled flowsheet';setBusy(true);setNotice('Saving…')
-    try{const r=await apiFetch(`${API}/api/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,flowsheet:{...flow,name}})});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(Array.isArray(data.detail)?data.detail.join(' '):data.detail||`Save failed (${r.status})`);setFlow({...flow,name:data.name||name});setIsDirty(false);await refreshSaved();setNotice(`Saved “${data.name||name}”`)}catch(e:any){setNotice(e.message)}finally{setBusy(false)}
+    setBusy(true);setNotice(forceSaveAs?'Choose where to save…':'Saving…')
+    try{
+      const name=(flow.name||'Untitled flowsheet').trim()||'Untitled flowsheet'
+      const content=JSON.stringify({...flow,name},null,2)
+      if(isDesktop){
+        const savedPath=await invoke<string|null>('save_flowsheet_file',{path:forceSaveAs?null:currentFilePath,suggestedName:name,content})
+        if(!savedPath){setNotice('Save cancelled');return}
+        setCurrentFilePath(savedPath);setFlow({...flow,name});setIsDirty(false)
+        setNotice(`Saved “${name}” · ${savedPath}`)
+      }else{
+        downloadText(`${name.replace(/[^a-z0-9-_ ]/gi,'')||'flowsheet'}.bioagri.json`,content)
+        setIsDirty(false);setNotice(`Downloaded “${name}”`)
+      }
+    }catch(e:any){setNotice(`Save failed: ${e.message||e}`)}finally{setBusy(false)}
   }
-  function saveAs(){if(!flow)return;const name=window.prompt('Name this flowsheet',flow.name||'Untitled flowsheet');if(name?.trim())saveCurrent(name.trim())}
-  function loadSaved(name:string){if(!name)return;if(isDirty&&!window.confirm('Open another flowsheet and discard unsaved changes?'))return;setBusy(true);setNotice(`Opening “${name}”…`);apiFetch(`${API}/api/saved/${encodeURIComponent(name)}`).then(r=>{if(!r.ok)throw new Error(`Open failed (${r.status})`);return r.json()}).then(f=>{setFlow(arrangeFlowsheet(f));setResults(null);setHistory([]);setFuture([]);setSelected(null);setSelectedStream(null);setIsDirty(false);setNotice(`Opened and organised “${name}”`)}).catch((e:any)=>setNotice(e.message)).finally(()=>setBusy(false))}
+  function saveAs(){saveCurrent(true)}
+  async function openFlowsheetFile(){
+    if(isDirty&&!window.confirm('Open another flowsheet and discard unsaved changes?'))return
+    if(!isDesktop){importRef.current?.click();return}
+    setBusy(true);setNotice('Choose a BioAgri flowsheet…')
+    try{
+      const opened=await invoke<{path:string,content:string}|null>('open_flowsheet_file')
+      if(!opened){setNotice('Open cancelled');return}
+      const value=JSON.parse(opened.content)
+      if(!value||!Array.isArray(value.blocks)||!Array.isArray(value.connections))throw new Error('This is not a valid BioAgri flowsheet file.')
+      setFlow(value);setResults(null);setHistory([]);setFuture([]);setSelected(null);setSelectedStream(null)
+      setCurrentFilePath(opened.path);setIsDirty(false);setNotice(`Opened “${value.name||opened.path}”`)
+    }catch(e:any){setNotice(`Open failed: ${e.message||e}`)}finally{setBusy(false)}
+  }
+  function loadSaved(name:string){if(!name)return;if(isDirty&&!window.confirm('Open another flowsheet and discard unsaved changes?'))return;setBusy(true);setNotice(`Opening legacy saved flow “${name}”…`);apiFetch(`${API}/api/saved/${encodeURIComponent(name)}`).then(r=>{if(!r.ok)throw new Error(`Open failed (${r.status})`);return r.json()}).then(f=>{setFlow(f);setResults(null);setHistory([]);setFuture([]);setSelected(null);setSelectedStream(null);setCurrentFilePath(null);setIsDirty(false);setNotice(`Opened legacy saved flow “${name}”`)}).catch((e:any)=>setNotice(e.message)).finally(()=>setBusy(false))}
   function loadPreset(which:string){if(isDirty&&!window.confirm('Open this route and discard unsaved changes?'))return;setBusy(true);setNotice('Opening route…');apiFetch(`${API}/api/${which}`).then(r=>{if(!r.ok)throw new Error(`Could not open route (${r.status})`);return r.json()}).then(f=>{setFlow(arrangeFlowsheet(f));setResults(null);setHistory([]);setFuture([]);setSelected(null);setSelectedStream(null);setIsDirty(false);setNotice('Route ready')}).catch((e:any)=>setNotice(e.message)).finally(()=>setBusy(false))}
   function newFlowsheet(){if(isDirty&&!window.confirm('Start a new blank flowsheet? Unsaved changes will be lost.'))return;setFlow({name:'Untitled flowsheet',blocks:[],connections:[]});setResults(null);setSelected(null);setSelectedStream(null);setHistory([]);setFuture([]);setIsDirty(true);setNotice('Blank flowsheet created')}
 
