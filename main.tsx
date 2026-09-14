@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {createRoot} from 'react-dom/client'
 import {fetch as tauriFetch} from '@tauri-apps/plugin-http'
 import {check} from '@tauri-apps/plugin-updater'
+import {invoke} from '@tauri-apps/api/core'
 import {
   ReactFlow, Background, Controls, MiniMap, addEdge, MarkerType,
   useNodesState, useEdgesState, Handle, Position, ConnectionLineType, Panel
@@ -255,6 +256,7 @@ function App(){
   const [sensitivityParameter,setSensitivityParameter]=useState('glucan_to_glucose_conversion_fraction')
   const [sensitivityValues,setSensitivityValues]=useState('0.65, 0.72, 0.7674, 0.80, 0.85')
   const [isDirty,setIsDirty]=useState(false)
+  const [currentFilePath,setCurrentFilePath]=useState<string|null>(null)
   const importRef=useRef<HTMLInputElement|null>(null)
 
   async function checkForUpdates(manual=false){
