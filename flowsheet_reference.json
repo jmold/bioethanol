@@ -284,7 +284,8 @@
         "destination": "P09 Rectification",
         "destination_tray_from_top": 14,
         "recycle_ethanol_wt_fraction": 0.72,
-        "status": "SPECIFIED RECYCLE / ITERATIVE SOLVER PENDING"
+        "status": "CONVERGED INTERNAL RECYCLE",
+        "internal_recycle": true
       },
       "position": {
         "x": 2055,
