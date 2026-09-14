@@ -1308,12 +1308,13 @@ class PretreatmentHeatRecoveryBlock(BaseBlock):
         m_kg_s=s.total_tph*1000/3600
         gross_heat=m_kg_s*cp*max(0.0,hot_C-cold_feed_C)
         available=m_kg_s*cp*max(0.0,hot_C-hydro_C)
-        recovered=available*eff
+        recovered=min(available,gross_heat*eff)
         net_external=max(0.0,gross_heat-recovered)
         design_heat=net_external*(1+allowance)
         residual_cooling=max(0.0,available-recovered)
         equivalent_preheat=cold_feed_C+(recovered/(m_kg_s*cp) if m_kg_s*cp>0 else 0.0)
         steam=design_heat*3600/steam_h if steam_h>0 else 0.0
+        gross_steam=gross_heat*3600/steam_h if steam_h>0 else 0.0
         out=s.copy(new_id=f"{self.id}:cooled_slurry")
         out.temperature_C=hydro_C
         out.pressure_bar_abs=1.0
@@ -1331,15 +1332,15 @@ class PretreatmentHeatRecoveryBlock(BaseBlock):
                 "closure_error_tph":_closure_error(inputs,{"cooled_slurry":out})
             },
             utilities=UtilityDemand(
-                thermal_kW=-recovered,
+                thermal_kW=design_heat-gross_heat,
                 cooling_kW=residual_cooling,
-                steam_kgph=0.0,
+                steam_kgph=steam-gross_steam,
                 other={"heat_recovered_kW":recovered,"pretreatment_design_heat_kW":design_heat,"pretreatment_steam_kgph":steam}
             ),
             equipment=[EquipmentRequirement(equipment_type="P03 pretreatment heat recovery / final cooler",design_flow_tph=s.total_tph,design_duty_kW=available)],
             metadata=EngineeringMetadata(
                 status="SPREADSHEET P03 ALIGNMENT",
-                basis="P03 sensible heat recovery and cooling; 75% of hot-side heat above 50C",
+                basis="P03 workbook basis: selected recovery is 75% of gross 10→180C sensible duty, capped by hot-side availability above 50C",
                 confidence="MEDIUM",
                 note="Cold-side feed preheat is represented energetically to avoid a material calculation cycle in the current acyclic solver."
             )
