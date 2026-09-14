@@ -85,6 +85,67 @@ class Flowsheet:
             raise FlowsheetError("Flowsheet contains a cycle/recycle. Iterative recycle solving is deferred beyond V0.2.")
         return order
 
+    @staticmethod
+    def _combine_streams(a: Stream, b: Stream, stream_id: str) -> Stream:
+        keys=set(a.components_tph)|set(b.components_tph)
+        comp={k:a.get(k)+b.get(k) for k in keys}
+        total=a.total_tph+b.total_tph
+        temp=None
+        if total>0 and a.temperature_C is not None and b.temperature_C is not None:
+            temp=(a.total_tph*a.temperature_C+b.total_tph*b.temperature_C)/total
+        elif a.temperature_C is not None:
+            temp=a.temperature_C
+        elif b.temperature_C is not None:
+            temp=b.temperature_C
+        return Stream(stream_id,comp,temperature_C=temp,pressure_bar_abs=a.pressure_bar_abs or b.pressure_bar_abs,note="P09 fresh feed plus converged P10 recycle")
+
+    def _solve_rectifier_sieve_recycle(self, rect_id: str, sieve_id: str, fresh_feed: Stream):
+        rect_def=self.blocks[rect_id]; sieve_def=self.blocks[sieve_id]
+        rect_cls=BLOCK_REGISTRY[rect_def.type]; sieve_cls=BLOCK_REGISTRY[sieve_def.type]
+        recycle=Stream(f"{sieve_id}:recycle_guess",{"ethanol":0.0,"water":0.0},temperature_C=sieve_def.params.get("feed_temperature_C",120.0))
+        tolerance=1e-10
+        max_iterations=100
+        converged=False
+        rect_result=None; sieve_result=None
+
+        for iteration in range(1,max_iterations+1):
+            combined=self._combine_streams(fresh_feed,recycle,f"{rect_id}:combined_feed")
+            rect_result=rect_cls(rect_id,rect_def.params).calculate({"feed":combined})
+            if rect_result.errors:
+                break
+            sieve_result=sieve_cls(sieve_id,sieve_def.params).calculate({"feed":rect_result.outputs["overhead"]})
+            if sieve_result.errors:
+                break
+            new_recycle=sieve_result.outputs["recycle"]
+            keys=set(recycle.components_tph)|set(new_recycle.components_tph)
+            error=max([abs(new_recycle.get(k)-recycle.get(k)) for k in keys] or [0.0])
+            recycle=new_recycle.copy(new_id=f"{sieve_id}:recycle_guess")
+            if error<=tolerance:
+                converged=True
+                break
+
+        if rect_result is not None and sieve_result is not None and not rect_result.errors and not sieve_result.errors:
+            combined=self._combine_streams(fresh_feed,recycle,f"{rect_id}:combined_feed")
+            rect_result=rect_cls(rect_id,rect_def.params).calculate({"feed":combined})
+            sieve_result=sieve_cls(sieve_id,sieve_def.params).calculate({"feed":rect_result.outputs["overhead"]})
+            recycle_final=sieve_result.outputs["recycle"]
+            rect_result.metrics.update({
+                "fresh_feed_tph":fresh_feed.total_tph,
+                "converged_recycle_tph":recycle_final.total_tph,
+                "total_rectifier_feed_tph":combined.total_tph,
+                "recycle_iterations":iteration,
+                "recycle_converged":converged,
+            })
+            sieve_result.metrics.update({
+                "recycle_iterations":iteration,
+                "recycle_converged":converged,
+            })
+            if converged:
+                sieve_result.metadata.note="P10 regeneration recycle is iteratively converged back to P09 on the workbook tear-stream basis."
+            else:
+                sieve_result.warnings.append("P09/P10 recycle did not converge within the iteration limit.")
+        return rect_result,sieve_result,converged
+
     def run(self):
         structure_errors = self.validate_structure()
         if structure_errors:
@@ -102,32 +163,56 @@ class Flowsheet:
         for c in self.connections:
             connections_from[c.from_block].append(c)
 
+        precomputed=set()
         for bid in order:
+            if bid in precomputed:
+                continue
             bdef = self.blocks[bid]
             cls = BLOCK_REGISTRY[bdef.type]
+
+            if bdef.type=="rectifier" and "feed" in incoming_by_block[bid]:
+                sieve_connection=next((c for c in connections_from[bid] if c.from_port=="overhead" and self.blocks[c.to_block].type=="molecular_sieve"),None)
+                if sieve_connection:
+                    sieve_id=sieve_connection.to_block
+                    sieve_params=self.blocks[sieve_id].params
+                    if sieve_params.get("regeneration_recycle_ethanol_wt_fraction") is not None:
+                        rect_result,sieve_result,_=self._solve_rectifier_sieve_recycle(bid,sieve_id,incoming_by_block[bid]["feed"])
+                        if rect_result is not None and sieve_result is not None:
+                            self.instances[bid]=cls(bid,bdef.params)
+                            self.instances[sieve_id]=BLOCK_REGISTRY[self.blocks[sieve_id].type](sieve_id,sieve_params)
+                            self.results[bid]=rect_result; self.results[sieve_id]=sieve_result
+                            for block_id,result in ((bid,rect_result),(sieve_id,sieve_result)):
+                                self.warnings.extend([f"{block_id}: {w}" for w in result.warnings])
+                                self.errors.extend([f"{block_id}: {e}" for e in result.errors])
+                                for port,stream in result.outputs.items():
+                                    self.streams[f"{block_id}.{port}"]=stream
+                            if not rect_result.errors and not sieve_result.errors:
+                                for cn in connections_from[bid]:
+                                    if cn.to_block==sieve_id:
+                                        continue
+                                    if cn.from_port in rect_result.outputs:
+                                        incoming_by_block[cn.to_block][cn.to_port]=rect_result.outputs[cn.from_port].copy(new_id=cn.id)
+                                for cn in connections_from[sieve_id]:
+                                    if cn.from_port in sieve_result.outputs:
+                                        incoming_by_block[cn.to_block][cn.to_port]=sieve_result.outputs[cn.from_port].copy(new_id=cn.id)
+                            precomputed.add(sieve_id)
+                            continue
+
             block = cls(bid,bdef.params)
             self.instances[bid] = block
-
             result = block.calculate(incoming_by_block[bid])
             self.results[bid] = result
-
             self.warnings.extend([f"{bid}: {w}" for w in result.warnings])
             self.errors.extend([f"{bid}: {e}" for e in result.errors])
-
             if result.errors:
                 continue
-
             for port, stream in result.outputs.items():
-                key = f"{bid}.{port}"
-                self.streams[key] = stream
-
-            for c in connections_from[bid]:
-                if c.from_port not in result.outputs:
-                    self.errors.append(f"{bid}: output '{c.from_port}' was not produced.")
+                self.streams[f"{bid}.{port}"] = stream
+            for cn in connections_from[bid]:
+                if cn.from_port not in result.outputs:
+                    self.errors.append(f"{bid}: output '{cn.from_port}' was not produced.")
                     continue
-                incoming_by_block[c.to_block][c.to_port] = result.outputs[c.from_port].copy(
-                    new_id=f"{c.id}"
-                )
+                incoming_by_block[cn.to_block][cn.to_port] = result.outputs[cn.from_port].copy(new_id=cn.id)
 
         return self.summary()
 
@@ -170,6 +255,8 @@ class Flowsheet:
         terminal_types={"product_sink","wastewater_sink","vent_sink","solid_sink","recycle_sink"}
         for c in self.connections:
             if self.blocks.get(c.to_block) and self.blocks[c.to_block].type in terminal_types:
+                if self.blocks[c.to_block].type=="recycle_sink" and self.blocks[c.to_block].params.get("internal_recycle",False):
+                    continue
                 s=self.streams.get(f"{c.from_block}.{c.from_port}")
                 if not s: continue
                 for k,v in s.components_tph.items():
