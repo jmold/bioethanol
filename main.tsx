@@ -151,6 +151,27 @@ function DigitalTwin({dynamic,results}:any){
   </div>
 }
 
+function SchedulerPage({dynamic,flow}:any){
+  if(!dynamic)return <div className="primary-page-empty"><strong>No scheduler data yet</strong><p>Run the current flowsheet to generate the connected batch schedule.</p></div>
+  const schedules=dynamic.vessel_schedules||[]
+  const op=dynamic.operability||{}
+  const throughput=dynamic.connected_throughput||{}
+  return <div className="scheduler-page">
+    <div className="page-hero"><div><span className="eyebrow">Connected operations scheduler</span><h2>Batch sequencing & plant operability</h2><p>Direct vessel-to-vessel scheduling for P02 Pretreatment, P04 Hydrolysis and P05 Fermentation, including transfer pumps, blocking and starvation.</p></div><div className={`rag-status ${dynamic.plant_feasible_at_selected_throughput?'good':'danger'}`}><i/>{dynamic.plant_feasible_at_selected_throughput?'CAPACITY FEASIBLE':'CAPACITY CONSTRAINT'}</div></div>
+    <div className="result-kpis operations-kpis">
+      <div><span>Completed feed</span><strong>{fmt(throughput.average_completed_feed_tph,3)} <small>t/h</small></strong><p>End-to-end scheduled throughput</p></div>
+      <div><span>Annual ethanol</span><strong>{fmt((throughput.ethanol_product_L_per_8000h_year||0)/1e6,2)} <small>ML/y</small></strong><p>Based on completed scheduled feed</p></div>
+      <div><span>Blocking events</span><strong>{op.blocking_events||0}</strong><p>Upstream waits for downstream capacity</p></div>
+      <div><span>Pump contention</span><strong>{op.pump_contention_events||0}</strong><p>Transfer resource conflicts</p></div>
+    </div>
+    <section className="operations-section"><div className="section-heading"><div><span>Installed capacity</span><h3>Vessel and transfer-pump assessment</h3></div><p>Fill and empty durations are working volume ÷ selected transfer-pump rate.</p></div><div className="vessel-cards">{schedules.map((v:any)=><article key={v.block_id} className={v.bottleneck?'constraint':''}><div><span>{v.block_name}</span><strong>{v.installed_vessels} installed / {v.required_vessels} required</strong></div><UtilisationBar value={v.utilisation_fraction}/><dl><div><dt>Working volume</dt><dd>{fmt(v.vessel_working_volume_m3,1)} m³</dd></div><div><dt>Batch mass</dt><dd>{fmt(v.batch_mass_t,1)} t</dd></div><div><dt>Inlet pump</dt><dd>{fmt(v.inlet_transfer_pump_rate_m3ph,2)} m³/h</dd></div><div><dt>Fill time</dt><dd>{fmt(v.fill_time_h,2)} h</dd></div><div><dt>Outlet pump</dt><dd>{fmt(v.outlet_transfer_pump_rate_m3ph,2)} m³/h</dd></div><div><dt>Empty time</dt><dd>{fmt(v.empty_time_h,2)} h</dd></div><div><dt>Cycle</dt><dd>{fmt(v.cycle_time_h,2)} h</dd></div><div><dt>Capacity</dt><dd>{fmt(v.capacity_tph,3)} t/h</dd></div></dl></article>)}</div></section>
+    <section className="operations-section"><div className="section-heading"><div><span>Representative cycles</span><h3>Batch phase timeline</h3></div><p>Phase lengths are proportional to configured transfer, reaction and CIP durations.</p></div><div className="timeline-list">{schedules.map((v:any)=><BatchTimeline key={v.block_id} schedule={v}/>)}</div></section>
+    <section className="operations-section"><div className="section-heading"><div><span>Time-domain demand</span><h3>Utilities through the schedule</h3></div><p>{dynamic.horizon_h}-hour horizon · {dynamic.timestep_min}-minute timestep.</p></div><div className="series-grid"><MiniSeries rows={dynamic.timeline} valueKey="net_external_thermal_kW" label="Net external heat (kW)" color="#c46b2b"/><MiniSeries rows={dynamic.timeline} valueKey="electrical_kW" label="Electrical demand (kW)" color="#2e6f94"/><MiniSeries rows={dynamic.timeline} valueKey="used_heat_recovery_kW" label="Heat recovered (kW)" color="#3d8b5d"/><MiniSeries rows={dynamic.timeline} valueKey="cooling_kW" label="Cooling demand (kW)" color="#547fc1"/></div></section>
+    <section className="operations-section"><div className="section-heading"><div><span>Operability log</span><h3>Recent transfer and batch events</h3></div><p>Useful for diagnosing blocking, starvation and transfer sequencing.</p></div><div className="event-table">{(dynamic.event_log||[]).slice(-40).reverse().map((e:any,i:number)=><div key={i}><span>{fmt(e.time_h,2)} h</span><strong>{pretty(e.event)}</strong><small>{e.vessel||[e.from,e.to].filter(Boolean).join(' → ')||''}</small></div>)}</div></section>
+    <p className="model-boundary"><strong>Scheduler boundary:</strong> no intermediate buffer vessels are assumed. P02 → P04 → P05 transfers are direct and event-resolved. P06 onward remains continuous process-screening logic.</p>
+  </div>
+}
+
 function ProcessNode({data,selected}:any){
   const inputs=data.inputs||[], outputs=data.outputs||[]
   const stage=stageMeta(data.type)
@@ -239,7 +260,8 @@ function App(){
   const [libraryQuery,setLibraryQuery]=useState('')
   const [inspectorTab,setInspectorTab]=useState<'configure'|'results'>('configure')
   const [dashboardOpen,setDashboardOpen]=useState(false)
-  const [resultsTab,setResultsTab]=useState<'summary'|'twin'|'operations'|'streams'|'heat'|'electrical'>('summary')
+  const [activePage,setActivePage]=useState<'flowsheet'|'twin'|'scheduler'>('flowsheet')
+  const [resultsTab,setResultsTab]=useState<'summary'|'streams'|'heat'|'electrical'>('summary')
   const [history,setHistory]=useState<Flowsheet[]>([])
   const [future,setFuture]=useState<Flowsheet[]>([])
   const [showLibrary,setShowLibrary]=useState(false)
@@ -486,7 +508,13 @@ function App(){
         <button className="icon-button" title="Undo" disabled={!history.length} onClick={undo}>↶</button>
         <button className="icon-button" title="Redo" disabled={!future.length} onClick={redo}>↷</button>
         <div className="toolbar-divider"/>
-        <button onClick={autoArrange} disabled={!flow?.blocks.length}>Organise flow</button>
+        <div className="page-nav" aria-label="Primary workspace">
+          <button className={activePage==='flowsheet'?'active':''} onClick={()=>setActivePage('flowsheet')}>Flowsheet</button>
+          <button className={activePage==='twin'?'active':''} onClick={()=>setActivePage('twin')}>Digital Twin</button>
+          <button className={activePage==='scheduler'?'active':''} onClick={()=>setActivePage('scheduler')}>Scheduler</button>
+        </div>
+        <div className="toolbar-divider"/>
+        <button onClick={autoArrange} disabled={!flow?.blocks.length||activePage!=='flowsheet'}>Organise flow</button>
         <button onClick={()=>saveCurrent(false)} disabled={busy||!flow}>Save</button>
         <button onClick={openFlowsheetFile} disabled={busy}>Open…</button>
         <details className="route-menu"><summary>Routes</summary><div className="menu-popover"><button onClick={()=>loadPreset('reference-flowsheet')}>Reference route</button><button onClick={()=>loadPreset('alternative-flowsheet')}>Alternative route</button></div></details>
@@ -499,7 +527,7 @@ function App(){
       </div>
     </header>
 
-    <div className={`workspace ${showLibrary?'with-library':''} ${showInspector?'with-inspector':''}`}>
+    <div className={`workspace ${showLibrary?'with-library':''} ${showInspector?'with-inspector':''}`} style={{display:activePage==='flowsheet'?undefined:'none'}}>
       {showLibrary&&<aside className="library-panel">
         <div className="panel-header"><div><strong>Add process step</strong><span>Drag-free library</span></div><button className="ghost-icon" onClick={()=>setShowLibrary(false)} title="Hide library">‹</button></div>
         <div className="search-wrap"><span>⌕</span><input value={libraryQuery} onChange={e=>setLibraryQuery(e.target.value)} placeholder="Search equipment…"/></div>
@@ -589,17 +617,20 @@ function App(){
       </aside>}
     </div>
 
+    {activePage==='twin'&&<main className="primary-page-shell"><div className="primary-page-head"><div><span className="eyebrow">Digital Twin</span><h1>Plant replay & live batch state</h1><p>Full-width time-domain view of the connected process, vessel inventories and transfers.</p></div><button className="primary" onClick={runModel} disabled={busy||!flow}>{busy?'Running…':'Run current model'}</button></div><div className="primary-page-scroll">{results?.dynamic_plant?<DigitalTwin dynamic={results.dynamic_plant} results={results}/>:<div className="primary-page-empty"><strong>No Digital Twin run yet</strong><p>Run the flowsheet to generate the connected plant replay.</p></div>}</div></main>}
+    {activePage==='scheduler'&&<main className="primary-page-shell"><div className="primary-page-head"><div><span className="eyebrow">Scheduler</span><h1>Production schedule & operability</h1><p>Vessel capacity, batch phases, direct transfers, pumps and plant constraints.</p></div><button className="primary" onClick={runModel} disabled={busy||!flow}>{busy?'Running…':'Recalculate schedule'}</button></div><div className="primary-page-scroll"><SchedulerPage dynamic={results?.dynamic_plant} flow={flow}/></div></main>}
+
     <footer className="statusbar">
       <div className="status-left"><span className={`model-indicator ${results?.errors?.length?'bad':results?'good':'idle'}`}></span><strong>{notice}</strong></div>
       <div className="status-right">
         {results&&<><span>{results.errors?.length||0} errors</span><span>{results.warnings?.length||0} warnings</span><span>{fmt(results.utility_totals?.electricity_kW||0,0)} kW elec</span><span>{fmt(results.utility_totals?.thermal_kW||0,0)} kW heat</span></>}
-        <button className="status-button" onClick={()=>setDashboardOpen(true)} disabled={!results}>View plant results</button>
+        <button className="status-button" onClick={()=>setDashboardOpen(true)} disabled={!results}>Plant results</button>
       </div>
     </footer>
 
     {dashboardOpen&&<div className="sheet-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setDashboardOpen(false)}}><section className="results-sheet">
       <div className="sheet-handle"></div><div className="sheet-head"><div><span className="eyebrow">Latest plant run</span><h2>{flow?.name}</h2><p>A plain-language summary first, with engineering checks below.</p></div><button className="close-button" onClick={()=>setDashboardOpen(false)} aria-label="Close results">×</button></div>
-      <div className="result-tabs"><button className={resultsTab==='summary'?'active':''} onClick={()=>setResultsTab('summary')}>Summary</button><button className={resultsTab==='twin'?'active':''} onClick={()=>setResultsTab('twin')}>Digital twin</button><button className={resultsTab==='operations'?'active':''} onClick={()=>setResultsTab('operations')}>Operations</button><button className={resultsTab==='streams'?'active':''} onClick={()=>setResultsTab('streams')}>Stream table</button><button className={resultsTab==='heat'?'active':''} onClick={()=>setResultsTab('heat')}>Heat data</button><button className={resultsTab==='electrical'?'active':''} onClick={()=>setResultsTab('electrical')}>Electrical data</button></div>
+      <div className="result-tabs"><button className={resultsTab==='summary'?'active':''} onClick={()=>setResultsTab('summary')}>Summary</button><button className={resultsTab==='streams'?'active':''} onClick={()=>setResultsTab('streams')}>Stream table</button><button className={resultsTab==='heat'?'active':''} onClick={()=>setResultsTab('heat')}>Heat data</button><button className={resultsTab==='electrical'?'active':''} onClick={()=>setResultsTab('electrical')}>Electrical data</button></div>
       {resultsTab==='summary'&&<>
       <div className={`run-summary ${errorCount?'has-errors':warningCount?'has-warnings':'is-clear'}`}>
         <div className="summary-icon">{errorCount?'!':warningCount?'△':'✓'}</div>
@@ -618,17 +649,6 @@ function App(){
       </div>
       {!!results?.open_decisions?.length&&<section className="decisions"><div className="section-title">Design decisions still open</div>{results.open_decisions.slice(0,6).map((d:any)=><div className="decision-row" key={d.block_id}><span className={`status-dot ${statusClass(d.status)}`}></span><div><strong>{d.block_name}</strong><small>{d.note||d.basis}</small></div><span>{d.status}</span></div>)}</section>}
       </>}
-      {resultsTab==='twin'&&(!results?.dynamic_plant?<div className="inline-message error"><strong>Digital twin data is missing</strong><span>Run the current model to create the time-domain dataset.</span></div>:<DigitalTwin dynamic={results.dynamic_plant} results={results}/>)}
-      {resultsTab==='operations'&&<div className="operations-view">
-        {!results?.dynamic_plant?<div className="inline-message error"><strong>Dynamic simulation data is missing</strong><span>The running backend did not return dynamic_plant. Restart the simulator with the V0.18 launcher.</span></div>:<>
-          <div className="operations-head"><div><span>Native operations model</span><h3>{results.dynamic_plant.plant_feasible_at_selected_throughput?'Plant capacity feasible':'Installed batch capacity is insufficient'}</h3><p>{results.dynamic_plant.horizon_h}-hour horizon · {results.dynamic_plant.timestep_min}-minute timestep · {results.dynamic_plant.operating_basis_h_per_year.toLocaleString()} operating h/year</p></div><div className={`rag-status ${results.dynamic_plant.plant_feasible_at_selected_throughput?'good':'danger'}`}><i/>{results.dynamic_plant.plant_feasible_at_selected_throughput?'FEASIBLE':'CAPACITY CONSTRAINT'}</div></div>
-          <div className="result-kpis operations-kpis"><div><span>Current bottleneck</span><strong>{flow?.blocks.find(b=>b.id===results.dynamic_plant.bottleneck_block_id)?.name||pretty(results.dynamic_plant.bottleneck_block_id||'—')}</strong><p>Lowest installed capacity margin</p></div><div><span>Maximum feed multiplier</span><strong>{fmt(results.dynamic_plant.maximum_feed_multiplier_before_batch_capacity_limit,3)} <small>×</small></strong><p>Before the first batch capacity limit</p></div><div><span>Peak external heat</span><strong>{fmt(results.dynamic_plant.utility_summary?.net_external_thermal_kW?.peak,0)} <small>kW</small></strong><p>{fmt(results.dynamic_plant.utility_summary?.net_external_thermal_kW?.average,0)} kW average</p></div><div><span>Peak electricity</span><strong>{fmt(results.dynamic_plant.utility_summary?.electrical_kW?.peak,0)} <small>kW</small></strong><p>{fmt(results.dynamic_plant.utility_summary?.electrical_kW?.average,0)} kW average</p></div></div>
-          <section className="operations-section"><div className="section-heading"><div><span>Capacity</span><h3>Installed vessel and transfer-pump assessment</h3></div><p>Fill and empty durations are calculated from working volume ÷ selected pump rate.</p></div><div className="vessel-cards">{results.dynamic_plant.vessel_schedules.map((v:any)=><article key={v.block_id} className={v.bottleneck?'constraint':''}><div><span>{v.block_name}</span><strong>{v.installed_vessels} installed / {v.required_vessels} required</strong></div><UtilisationBar value={v.utilisation_fraction}/><dl><div><dt>Working volume</dt><dd>{fmt(v.vessel_working_volume_m3,1)} m³</dd></div><div><dt>Batch mass</dt><dd>{fmt(v.batch_mass_t,1)} t</dd></div><div><dt>Inlet pump</dt><dd>{fmt(v.inlet_transfer_pump_rate_m3ph,2)} m³/h</dd></div><div><dt>Fill time</dt><dd>{fmt(v.fill_time_h,2)} h</dd></div><div><dt>Outlet pump</dt><dd>{fmt(v.outlet_transfer_pump_rate_m3ph,2)} m³/h</dd></div><div><dt>Empty time</dt><dd>{fmt(v.empty_time_h,2)} h</dd></div><div><dt>Cycle</dt><dd>{fmt(v.cycle_time_h,2)} h</dd></div><div><dt>Capacity</dt><dd>{fmt(v.capacity_tph,3)} t/h</dd></div><div><dt>Required</dt><dd>{fmt(v.required_throughput_tph,3)} t/h</dd></div></dl></article>)}</div></section>
-          <section className="operations-section"><div className="section-heading"><div><span>Batch sequence</span><h3>Phase timeline for one representative cycle</h3></div><p>Lengths are proportional to phase duration.</p></div><div className="timeline-list">{results.dynamic_plant.vessel_schedules.map((v:any)=><BatchTimeline key={v.block_id} schedule={v}/>)}</div></section>
-          <section className="operations-section"><div className="section-heading"><div><span>Utilities</span><h3>Time-domain plant demand</h3></div><p>Profiles are sampled visually from the full {results.dynamic_plant.timeline.length}-point calculation.</p></div><div className="series-grid"><MiniSeries rows={results.dynamic_plant.timeline} valueKey="net_external_thermal_kW" label="Net external heat (kW)" color="#c46b2b"/><MiniSeries rows={results.dynamic_plant.timeline} valueKey="electrical_kW" label="Electrical demand (kW)" color="#2e6f94"/><MiniSeries rows={results.dynamic_plant.timeline} valueKey="used_heat_recovery_kW" label="Heat recovered (kW)" color="#3d8b5d"/><MiniSeries rows={results.dynamic_plant.timeline} valueKey="cooling_kW" label="Cooling demand (kW)" color="#547fc1"/></div></section>
-          <p className="model-boundary"><strong>V0.20 connected boundary:</strong> no intermediate buffer vessels are assumed. Pretreatment → Hydrolysis → Fermentation transfers are direct and event-resolved; downstream recovery remains continuous screening.</p>
-        </>}
-      </div>}
       {resultsTab==='streams'&&<div className="result-table-wrap"><div className="table-note"><strong>{results?.stream_register?.length||0} calculated streams</strong><span>Component values are t/h. The four largest non-zero components are shown.</span></div><table className="engineering-table"><thead><tr><th>Stream</th><th>Total t/h</th><th>Phase</th><th>Temp °C</th><th>Pressure bar(a)</th><th>Major components t/h</th><th>Status</th></tr></thead><tbody>{(results?.stream_register||[]).map((s:any)=><tr key={s.stream_id}><td><strong>{s.stream_id}</strong><small>{s.note}</small></td><td className="num">{fmt(s.total_tph,4)}</td><td>{s.phase||'—'}</td><td className="num">{fmt(s.temperature_C,1)}</td><td className="num">{fmt(s.pressure_bar_abs,2)}</td><td>{majorComponents(s.components_tph)}</td><td><span className={`table-status ${statusClass(s.status)}`}>{s.status||'—'}</span></td></tr>)}</tbody></table></div>}
       {resultsTab==='heat'&&<div className="heat-results">
         <section className="heat-recovery-panel"><div className="table-note"><strong>Dynamic heat-recovery sequence</strong><span>{results?.dynamic_plant?.horizon_h||168}-hour native schedule · {results?.dynamic_plant?.timestep_min||15}-minute calculation steps</span></div>
