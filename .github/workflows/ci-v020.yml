@@ -53,5 +53,11 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Prepare desktop resource fixture
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force desktop/backend | Out-Null
+          New-Item -ItemType File -Force desktop/backend/bioagri-backend.exe | Out-Null
+
       - name: Check Tauri desktop shell
         run: cargo check --manifest-path src-tauri/Cargo.toml
