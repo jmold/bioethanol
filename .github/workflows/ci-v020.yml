@@ -5,6 +5,7 @@ on:
     branches:
       - v0.20-connected-engine
       - v0.20.1-sheet-alignment
+      - v0.20.2-file-io
   pull_request:
     branches:
       - main
@@ -38,3 +39,19 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+  desktop-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Check Tauri desktop shell
+        run: cargo check --manifest-path src-tauri/Cargo.toml
