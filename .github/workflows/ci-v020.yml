@@ -1,18 +1,13 @@
-name: V0.20 validation
+name: Application validation
 
 on:
-  push:
-    branches:
-      - v0.20-connected-engine
-      - v0.20.1-sheet-alignment
-      - v0.20.2-file-io
-      - v0.21-distillation-fidelity
+  workflow_dispatch:
   pull_request:
     branches:
       - main
 
 concurrency:
-  group: v020-validation-${{ github.ref }}
+  group: application-validation-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
