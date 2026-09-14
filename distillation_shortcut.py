@@ -9,8 +9,16 @@ MW_WATER = 18.01528
 # NIST Antoine coefficients, log10(P_bar)=A-B/(T_K+C).
 # Ethanol: Ambrose & Sprake (1970), 292.77-366.63 K.
 # Water: Stull-style range used only for shortcut saturation-temperature iteration.
-ETHANOL_ANTOINE = (5.24677, 1598.673, -46.424)
-WATER_ANTOINE = (5.40221, 1838.675, -31.737)
+ETHANOL_ANTOINE_RANGES = [
+    (273.0, 351.70, (5.36658, 1670.409, -40.191)),
+    (292.77, 366.63, (5.24106, 1598.673, -46.424)),
+    (364.8, 513.91, (4.91960, 1432.526, -61.819)),
+]
+WATER_ANTOINE_RANGES = [
+    (255.9, 373.0, (4.6486, 1435.264, -64.848)),
+    (344.0, 373.0, (5.07783, 1663.125, -45.622)),
+    (379.0, 573.0, (3.55388, 643.748, -198.043)),
+]
 
 LATENT_ETHANOL_KJ_KG = 846.0
 LATENT_WATER_KJ_KG = 2257.0
@@ -50,17 +58,24 @@ def wt_to_mole_fraction(w_ethanol: float) -> float:
     return n_e / (n_e + n_w)
 
 
-def _psat_bar(t_k: float, coeffs: tuple[float,float,float]) -> float:
-    a,b,c = coeffs
+def _coeffs_for_temperature(t_k: float, ranges):
+    containing=[row for row in ranges if row[0] <= t_k <= row[1]]
+    if containing:
+        return min(containing,key=lambda row:row[1]-row[0])[2]
+    return min(ranges,key=lambda row:min(abs(t_k-row[0]),abs(t_k-row[1])))[2]
+
+
+def _psat_atm(t_k: float, ranges) -> float:
+    a,b,c=_coeffs_for_temperature(t_k,ranges)
     return 10 ** (a - b / (t_k + c))
 
 
-def saturation_temperature_C(pressure_bar: float, coeffs: tuple[float,float,float]) -> float:
-    target=max(float(pressure_bar),0.05)
+def saturation_temperature_C(pressure_bar: float, ranges) -> float:
+    target_atm=max(float(pressure_bar)/1.01325,0.05)
     lo,hi=273.15,473.15
-    for _ in range(100):
+    for _ in range(120):
         mid=(lo+hi)/2
-        if _psat_bar(mid,coeffs)<target:
+        if _psat_atm(mid,ranges)<target_atm:
             lo=mid
         else:
             hi=mid
@@ -68,12 +83,12 @@ def saturation_temperature_C(pressure_bar: float, coeffs: tuple[float,float,floa
 
 
 def representative_relative_volatility(feed_ethanol_mole_fraction: float, pressure_bar: float) -> tuple[float,float]:
-    t_e=saturation_temperature_C(pressure_bar,ETHANOL_ANTOINE)
-    t_w=saturation_temperature_C(pressure_bar,WATER_ANTOINE)
+    t_e=saturation_temperature_C(pressure_bar,ETHANOL_ANTOINE_RANGES)
+    t_w=saturation_temperature_C(pressure_bar,WATER_ANTOINE_RANGES)
     x=min(max(feed_ethanol_mole_fraction,0.0),1.0)
     t_c=x*t_e+(1-x)*t_w
     t_k=t_c+273.15
-    alpha=_psat_bar(t_k,ETHANOL_ANTOINE)/max(_psat_bar(t_k,WATER_ANTOINE),1e-12)
+    alpha=_psat_atm(t_k,ETHANOL_ANTOINE_RANGES)/max(_psat_atm(t_k,WATER_ANTOINE_RANGES),1e-12)
     return max(alpha,1.01),t_c
 
 
@@ -84,15 +99,17 @@ def fenske_min_stages(xd: float, xb: float, alpha: float) -> float:
 
 
 def underwood_min_reflux(zf: float, xd: float, alpha: float, q: float=1.0) -> float:
-    # Binary light key ethanol (alpha) / heavy key water (1.0).
+    # Saturated-liquid binary Underwood form:
+    # sum(alpha_i*z_i/(alpha_i-theta)) = 1-q, root between heavy and light key alphas.
     lo,hi=1.0+1e-9,alpha-1e-9
-    for _ in range(100):
+    target=1.0-q
+    for _ in range(120):
         theta=(lo+hi)/2
-        value=q*zf/(alpha-theta)+q*(1-zf)/(1-theta)
-        if value>1.0:
-            lo=theta
-        else:
+        value=alpha*zf/(alpha-theta)+(1-zf)/(1-theta)-target
+        if value>0.0:
             hi=theta
+        else:
+            lo=theta
     theta=(lo+hi)/2
     rmin=xd*alpha/(alpha-theta)+(1-xd)/(1-theta)-1.0
     return max(0.0,rmin)
