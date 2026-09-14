@@ -37,7 +37,7 @@ class SpreadsheetAlignmentTests(unittest.TestCase):
 
     def test_p03_workbook_heat_basis(self):
         self.assertFalse(self.result["errors"],self.result["errors"])
-        m=self.result["results"]["pretreat_heat_recovery"]["metrics"]
+        m=self.result["block_results"]["pretreat_heat_recovery"]["metrics"]
         self.assertAlmostEqual(m["gross_sensible_heat_kW"],2568.260833,places=3)
         self.assertAlmostEqual(m["recovered_heat_kW"],1926.195625,places=3)
         self.assertAlmostEqual(m["design_external_heat_kW"],738.374990,places=3)
