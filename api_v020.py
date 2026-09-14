@@ -1,7 +1,7 @@
-"""V0.20 API extension for the connected discrete-event plant engine.
+"""V0.20.1 API extension for the connected discrete-event plant engine.
 
 The steady-state V0.19 engineering model remains authoritative for chemistry,
-thermodynamics and utilities. V0.20 replaces only the time-domain plant payload
+thermodynamics and utilities. V0.20.1 retains only the time-domain plant payload
 with the connected event engine, while retaining the V0.19 utility basis.
 """
 
@@ -21,7 +21,7 @@ def _remove_post_route(path: str) -> None:
 
 
 def _connected_payload(definition: dict, result: dict) -> dict:
-    """Build V0.20 and retain V0.19 utility readings on the common time grid."""
+    """Build V0.20.1 and retain V0.19 utility readings on the common time grid."""
     legacy = build_native_dynamic_simulation(definition, result)
     connected = build_connected_dynamic_simulation(definition, result)
     legacy_rows = legacy.get("timeline", [])
@@ -42,7 +42,7 @@ def _connected_payload(definition: dict, result: dict) -> dict:
             row[key] = legacy_row.get(key, 0.0)
     connected["legacy_utility_basis"] = {
         "engine_version": legacy.get("engine_version", "0.19.0"),
-        "utility_basis": "V0.19 time-domain utility model retained during V0.20",
+        "utility_basis": "V0.19 time-domain utility model retained during V0.20.1",
     }
     return connected
 
@@ -59,7 +59,7 @@ def run_flowsheet_v020(payload: FlowsheetPayload):
         result["dynamic_plant"] = _connected_payload(definition, result)
         return result
     except (KeyError, TypeError, ValueError, ZeroDivisionError, RuntimeError) as exc:
-        raise HTTPException(status_code=422, detail=f"The V0.20 model could not calculate this flowsheet: {exc}") from exc
+        raise HTTPException(status_code=422, detail=f"The V0.20.1 model could not calculate this flowsheet: {exc}") from exc
 
 
 @app.post("/api/dynamic-plant")
@@ -69,7 +69,7 @@ def dynamic_plant_v020(payload: FlowsheetPayload):
         result = Flowsheet(definition).run()
         return _connected_payload(definition, result)
     except (KeyError, TypeError, ValueError, ZeroDivisionError, RuntimeError) as exc:
-        raise HTTPException(status_code=422, detail=f"The V0.20 connected plant engine could not calculate this flowsheet: {exc}") from exc
+        raise HTTPException(status_code=422, detail=f"The V0.20.1 connected plant engine could not calculate this flowsheet: {exc}") from exc
 
 
 @app.post("/api/connected-plant")
@@ -79,17 +79,17 @@ def connected_plant(payload: FlowsheetPayload):
         result = Flowsheet(definition).run()
         return _connected_payload(definition, result)
     except (KeyError, TypeError, ValueError, ZeroDivisionError, RuntimeError) as exc:
-        raise HTTPException(status_code=422, detail=f"The V0.20 connected plant engine could not calculate this flowsheet: {exc}") from exc
+        raise HTTPException(status_code=422, detail=f"The V0.20.1 connected plant engine could not calculate this flowsheet: {exc}") from exc
 
 
 @app.get("/api/v020-meta")
 def v020_meta():
     return {
         "application": "Bio-Agri Process Simulator",
-        "model_version": "0.20.0",
+        "model_version": "0.20.1",
         "engine": "direct vessel-to-vessel discrete-event plant engine",
         "connected_material_transfers": True,
         "intermediate_buffers_assumed": False,
         "legacy_model_retained": "0.19.0",
-        "chemistry_utility_basis": "V0.19 retained during alpha",
+        "chemistry_utility_basis": "V0.19 dynamic utility basis retained; steady-state flowsheet aligned to P01-P12 master sheet",
     }

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - v0.20-connected-engine
+      - v0.20.1-sheet-alignment
   pull_request:
     branches:
       - main

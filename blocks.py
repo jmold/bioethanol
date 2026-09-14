@@ -710,6 +710,13 @@ class BeerColumnBlock(BaseBlock):
                 "feed_preheat_kW":external_preheat_kW,
                 "reboiler_kW":reboiler_kW,
                 "condenser_kW":condenser_kW,
+                "actual_trays":p.get("actual_trays"),
+                "overall_tray_efficiency_fraction":p.get("overall_tray_efficiency_fraction"),
+                "feed_tray_from_top":p.get("feed_tray_from_top"),
+                "vapour_side_draw_tray_from_top":p.get("vapour_side_draw_tray_from_top"),
+                "molar_reflux_ratio":p.get("molar_reflux_ratio"),
+                "overhead_pressure_atm_abs":p.get("overhead_pressure_atm_abs"),
+                "reboiler_type":p.get("reboiler_type"),
                 "closure_error_tph":_closure_error(inputs,outputs)
             },
             utilities=UtilityDemand(
@@ -801,6 +808,12 @@ class RectifierBlock(BaseBlock):
                 "bottoms_total_tph":bottoms.total_tph,
                 "reboiler_kW":reboiler_kW,
                 "condenser_kW":condenser_kW,
+                "actual_trays":p.get("actual_trays"),
+                "overall_tray_efficiency_fraction":p.get("overall_tray_efficiency_fraction"),
+                "beer_side_draw_feed_tray_from_top":p.get("beer_side_draw_feed_tray_from_top"),
+                "molecular_sieve_recycle_tray_from_top":p.get("molecular_sieve_recycle_tray_from_top"),
+                "molar_reflux_ratio":p.get("molar_reflux_ratio"),
+                "bottoms_ethanol_wt_fraction_target":p.get("bottoms_ethanol_wt_fraction_target"),
                 "closure_error_tph":_closure_error(inputs,outputs)
             },
             utilities=UtilityDemand(
@@ -885,6 +898,11 @@ class MolecularSieveBlock(BaseBlock):
                 "ethanol_product_tph":product_etoh,
                 "recycle_tph":recycle.total_tph,
                 "regeneration_heat_kW":regeneration_kW,
+                "dehydration_method":p.get("dehydration_method","Vapour-phase 3A molecular sieve"),
+                "minimum_adsorption_beds":p.get("minimum_adsorption_beds",2),
+                "feed_temperature_C":p.get("feed_temperature_C",120.0),
+                "specified_recycle_ethanol_wt_fraction":p.get("regeneration_recycle_ethanol_wt_fraction",0.72),
+                "specified_recycle_destination":p.get("regeneration_recycle_destination","P09 Rectification, tray 14"),
                 "closure_error_tph":_closure_error(inputs,outputs)
             },
             utilities=UtilityDemand(thermal_kW=regeneration_kW),
@@ -1288,6 +1306,65 @@ class HeatRecoveryBlock(BaseBlock):
                 basis="Sensible heat/effectiveness/minimum approach",confidence="MEDIUM"))
 
 
+class PretreatmentHeatRecoveryBlock(BaseBlock):
+    type_name = "pretreatment_heat_recovery"
+    display_name = "P03 Pretreatment Heat Recovery & Cooling"
+    input_ports = {"feed": PortSpec("feed","in",description="Hot pretreated slurry from P02")}
+    output_ports = {"cooled_slurry": PortSpec("cooled_slurry","out",description="Pretreated slurry cooled to P04 hydrolysis temperature")}
+
+    def calculate(self, inputs):
+        errors=self.validate_inputs(inputs)
+        if errors: return BlockResult({},errors=errors)
+        s=inputs["feed"]; p=self.params
+        cp=p.get("slurry_cp_kJ_per_kgK",3.644)
+        cold_feed_C=p.get("cold_feed_temperature_C",10.0)
+        hot_C=s.temperature_C if s.temperature_C is not None else p.get("hot_discharge_temperature_C",180.0)
+        hydro_C=p.get("hydrolysis_target_temperature_C",50.0)
+        eff=p.get("heat_recovery_effectiveness",0.75)
+        allowance=p.get("design_heat_allowance_fraction",0.15)
+        steam_h=p.get("useful_steam_enthalpy_kJ_per_kg",2100.0)
+        m_kg_s=s.total_tph*1000/3600
+        gross_heat=m_kg_s*cp*max(0.0,hot_C-cold_feed_C)
+        available=m_kg_s*cp*max(0.0,hot_C-hydro_C)
+        recovered=min(available,gross_heat*eff)
+        net_external=max(0.0,gross_heat-recovered)
+        design_heat=net_external*(1+allowance)
+        residual_cooling=max(0.0,available-recovered)
+        equivalent_preheat=cold_feed_C+(recovered/(m_kg_s*cp) if m_kg_s*cp>0 else 0.0)
+        steam=design_heat*3600/steam_h if steam_h>0 else 0.0
+        gross_steam=gross_heat*3600/steam_h if steam_h>0 else 0.0
+        out=s.copy(new_id=f"{self.id}:cooled_slurry")
+        out.temperature_C=hydro_C
+        out.pressure_bar_abs=1.0
+        return BlockResult(
+            {"cooled_slurry":out},
+            metrics={
+                "gross_sensible_heat_kW":gross_heat,
+                "available_hot_side_heat_kW":available,
+                "recovered_heat_kW":recovered,
+                "net_external_pretreatment_heat_kW":net_external,
+                "design_external_heat_kW":design_heat,
+                "residual_cooling_kW":residual_cooling,
+                "equivalent_cold_feed_preheat_C":equivalent_preheat,
+                "steam_kgph":steam,
+                "closure_error_tph":_closure_error(inputs,{"cooled_slurry":out})
+            },
+            utilities=UtilityDemand(
+                thermal_kW=design_heat-gross_heat,
+                cooling_kW=residual_cooling,
+                steam_kgph=steam-gross_steam,
+                other={"heat_recovered_kW":recovered,"pretreatment_design_heat_kW":design_heat,"pretreatment_steam_kgph":steam}
+            ),
+            equipment=[EquipmentRequirement(equipment_type="P03 pretreatment heat recovery / final cooler",design_flow_tph=s.total_tph,design_duty_kW=available)],
+            metadata=EngineeringMetadata(
+                status="SPREADSHEET P03 ALIGNMENT",
+                basis="P03 workbook basis: selected recovery is 75% of gross 10→180C sensible duty, capped by hot-side availability above 50C",
+                confidence="MEDIUM",
+                note="Cold-side feed preheat is represented energetically to avoid a material calculation cycle in the current acyclic solver."
+            )
+        )
+
+
 class QualityRecycleBlock(BaseBlock):
     type_name = "quality_recycle"
     display_name = "Water Recycle / Quality Gate"
@@ -1569,13 +1646,16 @@ class BeerConditioningBlock(BaseBlock):
             {"outlet":out},
             metrics={
                 "economiser_recovery_kW":q,
+                "economiser_source":p.get("economiser_source","P08 beer-column bottoms"),
+                "selected_economiser_recovery_kW":p.get("economiser_recovery_kW",q),
                 "ethanol_wt_fraction":s.get("ethanol")/s.total_tph if s.total_tph else 0.0,
                 "closure_error_tph":_closure_error(inputs,{"outlet":out})
             },
             metadata=EngineeringMetadata(
                 status="EXCEL-MATCHED SCREENING BASIS",
-                basis="Workbook P07 beer preheat",
-                confidence="MEDIUM"
+                basis="Workbook P07 beer preheat / bottoms-to-beer economiser",
+                confidence="MEDIUM",
+                note="P07 heat recovery is represented as an energy link to P08 bottoms; a material loop is not created in the acyclic flowsheet solver."
             )
         )
 
@@ -1646,6 +1726,7 @@ BLOCK_REGISTRY: Dict[str, Type[BaseBlock]] = {
     FlashLetdownBlock.type_name: FlashLetdownBlock,
     WastewaterCollectorBlock.type_name: WastewaterCollectorBlock,
     HeatRecoveryBlock.type_name: HeatRecoveryBlock,
+    PretreatmentHeatRecoveryBlock.type_name: PretreatmentHeatRecoveryBlock,
     QualityRecycleBlock.type_name: QualityRecycleBlock,
     UtilityHeaderBlock.type_name: UtilityHeaderBlock,
     BatchSchedulerBlock.type_name: BatchSchedulerBlock,

@@ -1,7 +1,7 @@
-# Bio-Agri Process Simulator — V0.20 Connected Digital Twin
+# Bio-Agri Process Simulator — V0.20.1 P01–P12 Alignment
 
-Application version: **0.19.1**  
-Engineering model version: **0.19.0**  
+Application version: **0.20.1**  
+Engineering model version: **0.20.1**  
 Schema version: **1.0.0**
 
 Bio-Agri is a local engineering-screening application for lignocellulosic ethanol process development. It combines a visual flowsheet, transparent equipment assumptions, validated mass-balance calculations, scenario comparison, sensitivity analysis, and plant-level utility summaries.
@@ -119,3 +119,7 @@ A future engineering-model release should:
 4. build a dedicated native beer-column side-draw model,
 5. calculate reboiler/condenser duties from native enthalpy correlations and feed them directly into the dynamic steam/cooling system,
 6. add shared-pump contention and buffer-vessel constraints so upstream/downstream batch interactions are event-resolved rather than independently staggered.
+
+
+## V0.20.1 spreadsheet alignment
+V0.20.1 aligns the application reference route to the master Google Sheet P01–P12 process basis. P03 Pretreatment Heat Recovery & Cooling is now an explicit post-pretreatment stage; P07 represents beer-column-bottoms economising; P08/P09 expose the workbook tray, efficiency, feed/side-draw and reflux inputs; and the P10 molecular-sieve recycle is identified as a specified tear stream back to P09 tray 14 pending iterative recycle convergence. The Google Sheet is reference-only and is not modified by the application release.

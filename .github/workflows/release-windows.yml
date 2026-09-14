@@ -49,7 +49,7 @@ jobs:
         with:
           tagName: app-v__VERSION__
           releaseName: "BioAgri Process Simulator v__VERSION__"
-          releaseBody: "BioAgri Process Simulator V0.20 introduces the connected direct vessel-to-vessel plant scheduler and an updated Digital Twin aligned with the current Miscanthus process flow. Existing installations will be offered this signed update automatically."
+          releaseBody: "BioAgri Process Simulator V0.20.1 aligns the application to the master P01-P12 Miscanthus process sheet, including explicit P03 pretreatment heat recovery, P07 economising, P08/P09 design inputs and the specified P10 recycle route. Existing installations will be offered this signed update automatically."
           releaseDraft: false
           prerelease: false
           args: --bundles nsis

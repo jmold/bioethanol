@@ -120,31 +120,33 @@ function DigitalTwin({dynamic,results}:any){
   const Box=({title,sub,tone='#526170'}:any)=><div style={{minWidth:120,padding:'12px 10px',border:'1px solid #d3dde3',borderRadius:10,background:'#fff',textAlign:'center'}}><div style={{width:28,height:28,borderRadius:8,margin:'0 auto 7px',background:tone,opacity:.16}}/><strong style={{display:'block'}}>{title}</strong><span style={{fontSize:11,color:'#65727c'}}>{sub}</span></div>
   const Pipe=({active=false,label=''}:any)=><div className={`twin-pipe ${active?'flowing':''}`} style={{minWidth:54}}><i/>{label&&<b>{label}</b>}</div>
   return <div className="twin-view">
-    <div className="twin-toolbar"><div><span>V0.20 CONNECTED PLANT REPLAY</span><strong>Plant time {fmt(row.time_h||0,2)} h</strong></div><div className="twin-controls"><button onClick={()=>setPlaying(v=>!v)}>{playing?'Pause':'Play'}</button><button onClick={()=>setIndex(i=>Math.min(i+1,rows.length-1))}>Step</button><label>Speed <select value={speed} onChange={e=>setSpeed(Number(e.target.value))}><option value="1">1×</option><option value="4">4×</option><option value="12">12×</option><option value="32">32×</option></select></label></div></div>
+    <div className="twin-toolbar"><div><span>V0.20.1 P01–P12 PLANT REPLAY</span><strong>Plant time {fmt(row.time_h||0,2)} h</strong></div><div className="twin-controls"><button onClick={()=>setPlaying(v=>!v)}>{playing?'Pause':'Play'}</button><button onClick={()=>setIndex(i=>Math.min(i+1,rows.length-1))}>Step</button><label>Speed <select value={speed} onChange={e=>setSpeed(Number(e.target.value))}><option value="1">1×</option><option value="4">4×</option><option value="12">12×</option><option value="32">32×</option></select></label></div></div>
     <input className="twin-scrubber" type="range" min="0" max={Math.max(0,rows.length-1)} value={index} onChange={e=>{setPlaying(false);setIndex(Number(e.target.value))}} aria-label="Digital twin time"/>
     <div style={{overflowX:'auto',padding:'8px 0 18px'}}><div style={{display:'flex',alignItems:'center',minWidth:1900,gap:4}}>
-      <div className="feed-hopper"><div className="hopper-bin"/><strong>Miscanthus + water</strong><span>Feed preparation</span></div>
-      <Pipe active={true} label="Feed pump"/><Box title="Pretreatment HX" sub="Feed heat exchanger" tone="#cb7a36"/><Pipe active={true}/>
-      <TwinVessel label="Pretreatment" state={state('pretreat')} level={averageLevel('pretreat')} count={`${pretreat.installed_vessels||0} × ${fmt(pretreat.vessel_working_volume_m3,0)} m³`} tone="#cb7a36"/>
-      <Pipe active={transferActive('pretreat','hydro')} label="Direct transfer"/>
-      <TwinVessel label="Hydrolysis" state={state('hydro')} level={averageLevel('hydro')} count={`${hydro.installed_vessels||0} × ${fmt(hydro.vessel_working_volume_m3,0)} m³`} tone="#4c9a70"/>
+      <div className="feed-hopper"><div className="hopper-bin"/><strong>P01 Miscanthus + water</strong><span>Feed preparation & slurry make-up</span></div>
+      <Pipe active={true} label="Feed pump"/>
+      <TwinVessel label="P02 Pretreatment" state={state('pretreat')} level={averageLevel('pretreat')} count={`${pretreat.installed_vessels||0} × ${fmt(pretreat.vessel_working_volume_m3,0)} m³`} tone="#cb7a36"/>
+      <Pipe active={transferActive('pretreat','hydro')} label="Hot discharge"/>
+      <Box title="P03 Heat recovery" sub="180°C → 50°C · heat returned to cold feed" tone="#cb7a36"/>
+      <Pipe active={transferActive('pretreat','hydro')} label="To P04"/>
+      <TwinVessel label="P04 Hydrolysis" state={state('hydro')} level={averageLevel('hydro')} count={`${hydro.installed_vessels||0} × ${fmt(hydro.vessel_working_volume_m3,0)} m³`} tone="#4c9a70"/>
       <Pipe active={transferActive('hydro','ferm')} label="Direct transfer"/>
-      <TwinVessel label="Fermentation" state={state('ferm')} level={averageLevel('ferm')} count={`${ferm.installed_vessels||0} × ${fmt(ferm.vessel_working_volume_m3,0)} m³`} tone="#6779b8"/>
-      <Pipe active={true}/><Box title="Solids separation" sub="Cake + liquid" tone="#68737b"/><Pipe active={true}/><Box title="Beer conditioning" sub="Preheat to column" tone="#c46b2b"/><Pipe active={true}/>
-      <div className="twin-column"><div className="column-stack"><i/><i/><i/><i/><i/></div><strong>Beer column</strong><span>Continuous screening</span></div>
-      <Pipe active={true}/><div className="twin-column"><div className="column-stack"><i/><i/><i/><i/><i/></div><strong>Rectifier</strong><span>Continuous screening</span></div>
-      <Pipe active={true}/><Box title="Molecular sieve" sub="99.5 wt% ethanol" tone="#547fc1"/><Pipe active={true}/><Box title="Distillation utilities" sub="Thermal envelope" tone="#c46b2b"/><Pipe active={true}/>
-      <div className="twin-product"><div>EtOH</div><strong>Anhydrous ethanol</strong><span>{fmt(results?.terminal_component_totals?.ethanol,3)} t/h</span></div>
+      <TwinVessel label="P05 Fermentation" state={state('ferm')} level={averageLevel('ferm')} count={`${ferm.installed_vessels||0} × ${fmt(ferm.vessel_working_volume_m3,0)} m³`} tone="#6779b8"/>
+      <Pipe active={true}/><Box title="P06 Solids separation" sub="Post-fermentation cake + beer" tone="#68737b"/><Pipe active={true}/><Box title="P07 Beer conditioning" sub="32→90°C · bottoms economiser" tone="#c46b2b"/><Pipe active={true}/>
+      <div className="twin-column"><div className="column-stack"><i/><i/><i/><i/><i/></div><strong>P08 Beer column</strong><span>32 trays · 40 wt% side draw</span></div>
+      <Pipe active={true}/><div className="twin-column"><div className="column-stack"><i/><i/><i/><i/><i/></div><strong>P09 Rectification</strong><span>45 trays · 92.5 wt% overhead</span></div>
+      <Pipe active={true}/><Box title="P10 Molecular sieve" sub="3A · 99.5 wt% · recycle to P09 tray 14" tone="#547fc1"/><Pipe active={true}/><Box title="P12 Utilities" sub="Integrated heat / steam / cooling" tone="#c46b2b"/><Pipe active={true}/>
+      <div className="twin-product"><div>EtOH</div><strong>P11 Anhydrous ethanol</strong><span>{fmt(results?.terminal_component_totals?.ethanol,3)} t/h</span></div>
     </div></div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(5,minmax(130px,1fr))',gap:8,margin:'4px 0 12px'}}>
       <div className="dashboard-card"><span>CO₂ vent</span><strong>Fermentation side stream</strong></div>
       <div className="dashboard-card"><span>Residue solids</span><strong>Separation cake</strong></div>
       <div className="dashboard-card"><span>Beer bottoms</span><strong>Wastewater stream</strong></div>
       <div className="dashboard-card"><span>Rectifier bottoms</span><strong>Wastewater stream</strong></div>
-      <div className="dashboard-card"><span>Sieve recycle</span><strong>Recycle placeholder</strong></div>
+      <div className="dashboard-card"><span>P10 sieve recycle</span><strong>72 wt% EtOH → P09 tray 14 (specified tear stream)</strong></div>
     </div>
     <div className="twin-readouts"><div><span>Completed feed</span><strong>{fmt(throughput.average_completed_feed_tph,2)} t/h</strong></div><div><span>Annual ethanol</span><strong>{fmt((throughput.ethanol_product_L_per_8000h_year||0)/1e6,2)} ML/y</strong></div><div><span>Blocked events</span><strong>{op.blocking_events||0}</strong></div><div><span>Pump contention</span><strong>{op.pump_contention_events||0}</strong></div></div>
-    <p className="model-boundary"><strong>V0.20 model boundary:</strong> no intermediate buffer vessels are assumed. Pretreatment transfers directly into Hydrolysis and Hydrolysis directly into Fermentation. Batch vessel states and inventories are event-resolved; Solids Separation, Beer Conditioning, Beer Column, Rectifier, Molecular Sieve and the utility envelope remain continuous engineering-screening blocks.</p>
+    <p className="model-boundary"><strong>V0.20.1 spreadsheet-aligned boundary:</strong> the application follows the master P01–P12 process sequence. P03 heat recovery is explicit after P02 and returns recovered sensible heat energetically to the incoming cold slurry; P07 represents beer-column-bottoms economising. P10 recycle is specified back to P09 tray 14 as a tear stream until iterative recycle convergence is implemented. P02/P04/P05 batch states are event-resolved; P06–P10 remain continuous engineering-screening calculations.</p>
   </div>
 }
 
