@@ -1,7 +1,7 @@
-# Bio-Agri Process Simulator — V0.20.1 P01–P12 Alignment
+# Bio-Agri Process Simulator — V0.20.2 File I/O & Integrated Recovery
 
-Application version: **0.20.1**  
-Engineering model version: **0.20.1**  
+Application version: **0.20.2**  
+Engineering model version: **0.20.2**  
 Schema version: **1.0.0**
 
 Bio-Agri is a local engineering-screening application for lignocellulosic ethanol process development. It combines a visual flowsheet, transparent equipment assumptions, validated mass-balance calculations, scenario comparison, sensitivity analysis, and plant-level utility summaries.
@@ -123,3 +123,9 @@ A future engineering-model release should:
 
 ## V0.20.1 spreadsheet alignment
 V0.20.1 aligns the application reference route to the master Google Sheet P01–P12 process basis. P03 Pretreatment Heat Recovery & Cooling is now an explicit post-pretreatment stage; P07 represents beer-column-bottoms economising; P08/P09 expose the workbook tray, efficiency, feed/side-draw and reflux inputs; and the P10 molecular-sieve recycle is identified as a specified tear stream back to P09 tray 14 pending iterative recycle convergence. The Google Sheet is reference-only and is not modified by the application release.
+
+
+## V0.20.2 native files and integrated recovery
+V0.20.2 replaces packaged-backend persistence as the normal desktop workflow with native **Open**, **Save**, and **Save As** file dialogs. BioAgri flowsheets are saved directly to user-selected disk locations as JSON, preserving block positions, parameters and connections, and subsequent Save operations write back to the open file. Legacy backend-saved flows remain accessible for migration.
+
+Process-model changes include explicit P07 cold-side economiser energy closure (required duty, recovered duty and external trim heat) and an iteratively converged P10 molecular-sieve regeneration recycle to P09 using the workbook 72 wt% ethanol tear-stream basis. Internal recycle is excluded from external plant material closure; the workbook P11 product basis remains 643.8334866 L/h.
