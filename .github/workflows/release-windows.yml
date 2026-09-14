@@ -40,6 +40,25 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Pre-cache NSIS bundle tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip"
+          $out = "$env:RUNNER_TEMP\nsis-3.11.zip"
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            try {
+              Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+              if ((Get-Item $out).Length -gt 1000000) { break }
+            } catch {
+              if ($attempt -eq 5) { throw }
+              Start-Sleep -Seconds (5 * $attempt)
+            }
+          }
+          $cacheRoot = Join-Path $env:LOCALAPPDATA "tauri\NSIS"
+          New-Item -ItemType Directory -Force $cacheRoot | Out-Null
+          Expand-Archive -Path $out -DestinationPath $cacheRoot -Force
+
       - name: Build and publish signed Windows release
         uses: tauri-apps/tauri-action@v1
         env:
@@ -49,7 +68,7 @@ jobs:
         with:
           tagName: app-v__VERSION__
           releaseName: "BioAgri Process Simulator v__VERSION__"
-          releaseBody: "BioAgri Process Simulator V0.22 promotes the Digital Twin and Scheduler to full-page workspaces, restores progressive vessel fill/empty animation from the connected discrete-event engine, adds scheduler operability/event views, and reduces development CI noise. Existing installations will be offered this signed update automatically."
+          releaseBody: "BioAgri Process Simulator V0.23 introduces Digital Twin 2.0 with individual live batch vessels, batch lineage, transfer and pump state, Scheduler 2.0 with a per-vessel Gantt, and a new plant KPI dashboard. It also hardens Windows packaging against transient NSIS download failures. Existing installations will be offered this signed update automatically."
           releaseDraft: false
           prerelease: false
           args: --bundles nsis

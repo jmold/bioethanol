@@ -1,7 +1,7 @@
-# Bio-Agri Process Simulator — V0.22 Digital Twin & Scheduler
+# Bio-Agri Process Simulator — V0.23 Digital Twin 2.0
 
-Application version: **0.22.0**  
-Engineering model version: **0.22.0**  
+Application version: **0.23.0**  
+Engineering model version: **0.23.0**  
 Schema version: **1.0.0**
 
 Bio-Agri is a local engineering-screening application for lignocellulosic ethanol process development. It combines a visual flowsheet, transparent equipment assumptions, validated mass-balance calculations, scenario comparison, sensitivity analysis, and plant-level utility summaries.
@@ -143,3 +143,11 @@ V0.22 promotes the Digital Twin and production Scheduler to full-page primary wo
 The connected discrete-event engine now interpolates vessel inventory through transfer duration, so FILLING and EMPTYING states visibly change vessel level instead of jumping at transfer completion. No intermediate buffer vessels are introduced; P02 to P04 to P05 transfers remain direct vessel-to-vessel.
 
 Repository validation no longer runs on every development-branch push; it runs on pull requests to main or manually, reducing CI notification noise while retaining merge gates.
+
+
+## V0.23 Digital Twin 2.0
+V0.23 makes the operational views first-class engineering workspaces. The Digital Twin now exposes every installed P02/P04/P05 batch vessel individually with continuous fill level, live state, batch lineage, active direct-transfer endpoints and pump ownership. The Scheduler adds a full per-vessel Gantt based on actual event-engine state occupancy rather than representative cycle bars alone.
+
+A new Plant Dashboard provides production, scheduled throughput, utilities, specific energy, material-balance health, bottleneck utilisation, scheduler health and open engineering assumptions in one landing view. The connected event engine remains the source of truth: direct P02→P04→P05 transfers are retained and no intermediate buffer vessels are invented.
+
+The Windows release workflow also pre-caches NSIS with retry logic to reduce transient packaging failures. Development validation remains PR/manual only to reduce notification noise.

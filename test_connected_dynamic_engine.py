@@ -16,7 +16,7 @@ class ConnectedDynamicEngineTests(unittest.TestCase):
         cls.connected=build_connected_dynamic_simulation(cls.definition,cls.result,timestep_min=15,horizon_h=168)
 
     def test_connected_engine_identity(self):
-        self.assertEqual(self.connected["engine_version"],"0.22.0")
+        self.assertEqual(self.connected["engine_version"],"0.23.0")
         self.assertTrue(self.connected["connected_material_transfers"])
         self.assertFalse(self.connected["intermediate_buffers_assumed"])
         self.assertNotIn("buffers",self.connected)
@@ -87,6 +87,28 @@ class ConnectedDynamicEngineTests(unittest.TestCase):
                     emptying_levels.append(level)
         self.assertTrue(filling_levels,"Expected at least one partially filled vessel while FILLING.")
         self.assertTrue(emptying_levels,"Expected at least one partially emptied vessel while EMPTYING.")
+
+
+    def test_timeline_exposes_vessel_batch_and_pump_state(self):
+        rows=self.connected["timeline"]
+        self.assertTrue(rows)
+        row=next(r for r in rows if r.get("vessel_state"))
+        self.assertTrue(row["vessel_state"])
+        self.assertTrue(row["vessel_fill_fraction"])
+        self.assertTrue(row["vessel_batch_ids"])
+        self.assertTrue(row["pump_state"])
+        self.assertEqual(set(row["pump_state"]),set(row["pump_owner"]))
+
+    def test_batch_ids_are_created_and_propagated(self):
+        starts=[e for e in self.connected["event_log"] if e["event"]=="SOURCE_FILL_START"]
+        transfers=[e for e in self.connected["event_log"] if e["event"]=="DIRECT_TRANSFER_START"]
+        discharges=[e for e in self.connected["event_log"] if e["event"]=="FINAL_DISCHARGE_COMPLETE"]
+        self.assertTrue(starts)
+        self.assertTrue(all(e.get("batch_ids") for e in starts))
+        self.assertTrue(transfers)
+        self.assertTrue(any(e.get("batch_ids") for e in transfers))
+        self.assertTrue(discharges)
+        self.assertTrue(any(e.get("batch_ids") for e in discharges))
 
 if __name__=="__main__":
     unittest.main()
