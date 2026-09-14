@@ -494,6 +494,12 @@ class FermentationBlock(BaseBlock):
                 "fermentation_cooling_kW":cooling_kW,
                 "fermentation_heat_release_kJ_per_mol_glucose":heat_release_kJ_per_mol_glucose,
                 "fermentation_heat_release_kJ_per_kg_glucose":heat_release_kJ_per_kg_glucose,
+                "actual_trays":p.get("actual_trays"),
+                "overall_tray_efficiency_fraction":p.get("overall_tray_efficiency_fraction"),
+                "feed_tray_from_top":p.get("feed_tray_from_top"),
+                "vapour_side_draw_tray_from_top":p.get("vapour_side_draw_tray_from_top"),
+                "molar_reflux_ratio":p.get("molar_reflux_ratio"),
+                "overhead_pressure_atm_abs":p.get("overhead_pressure_atm_abs"),
                 "closure_error_tph":_closure_error(inputs,outputs)
             },
             utilities=UtilityDemand(
@@ -801,6 +807,12 @@ class RectifierBlock(BaseBlock):
                 "bottoms_total_tph":bottoms.total_tph,
                 "reboiler_kW":reboiler_kW,
                 "condenser_kW":condenser_kW,
+                "actual_trays":p.get("actual_trays"),
+                "overall_tray_efficiency_fraction":p.get("overall_tray_efficiency_fraction"),
+                "beer_side_draw_feed_tray_from_top":p.get("beer_side_draw_feed_tray_from_top"),
+                "molecular_sieve_recycle_tray_from_top":p.get("molecular_sieve_recycle_tray_from_top"),
+                "molar_reflux_ratio":p.get("molar_reflux_ratio"),
+                "bottoms_ethanol_wt_fraction_target":p.get("bottoms_ethanol_wt_fraction_target"),
                 "closure_error_tph":_closure_error(inputs,outputs)
             },
             utilities=UtilityDemand(
@@ -885,6 +897,11 @@ class MolecularSieveBlock(BaseBlock):
                 "ethanol_product_tph":product_etoh,
                 "recycle_tph":recycle.total_tph,
                 "regeneration_heat_kW":regeneration_kW,
+                "dehydration_method":p.get("dehydration_method","Vapour-phase 3A molecular sieve"),
+                "minimum_adsorption_beds":p.get("minimum_adsorption_beds",2),
+                "feed_temperature_C":p.get("feed_temperature_C",120.0),
+                "specified_recycle_ethanol_wt_fraction":p.get("regeneration_recycle_ethanol_wt_fraction",0.72),
+                "specified_recycle_destination":p.get("regeneration_recycle_destination","P09 Rectification, tray 14"),
                 "closure_error_tph":_closure_error(inputs,outputs)
             },
             utilities=UtilityDemand(thermal_kW=regeneration_kW),
@@ -1628,13 +1645,16 @@ class BeerConditioningBlock(BaseBlock):
             {"outlet":out},
             metrics={
                 "economiser_recovery_kW":q,
+                "economiser_source":p.get("economiser_source","P08 beer-column bottoms"),
+                "selected_economiser_recovery_kW":p.get("economiser_recovery_kW",q),
                 "ethanol_wt_fraction":s.get("ethanol")/s.total_tph if s.total_tph else 0.0,
                 "closure_error_tph":_closure_error(inputs,{"outlet":out})
             },
             metadata=EngineeringMetadata(
                 status="EXCEL-MATCHED SCREENING BASIS",
-                basis="Workbook P07 beer preheat",
-                confidence="MEDIUM"
+                basis="Workbook P07 beer preheat / bottoms-to-beer economiser",
+                confidence="MEDIUM",
+                note="P07 heat recovery is represented as an energy link to P08 bottoms; a material loop is not created in the acyclic flowsheet solver."
             )
         )
 
