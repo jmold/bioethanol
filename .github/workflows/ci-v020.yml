@@ -5,9 +5,14 @@ on:
     branches:
       - v0.20-connected-engine
       - v0.20.1-sheet-alignment
+      - v0.20.2-file-io
   pull_request:
     branches:
       - main
+
+concurrency:
+  group: v020-validation-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -38,3 +43,25 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+  desktop-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Prepare desktop resource fixture
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force desktop/backend | Out-Null
+          New-Item -ItemType File -Force desktop/backend/bioagri-backend.exe | Out-Null
+
+      - name: Check Tauri desktop shell
+        run: cargo check --manifest-path src-tauri/Cargo.toml

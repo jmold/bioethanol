@@ -865,15 +865,31 @@ class MolecularSieveBlock(BaseBlock):
 
         p = self.params
         product_wt = p.get("product_ethanol_wt_fraction",0.995)
+        recycle_wt = p.get("regeneration_recycle_ethanol_wt_fraction")
         product_recovery = p.get("ethanol_product_recovery_fraction",1.0)
-        product_etoh=etoh*product_recovery
-        recycle_etoh=etoh-product_etoh
 
-        product_total = product_etoh/product_wt
-        product_water = product_total-product_etoh
-        if product_water > s.get("water"):
-            return BlockResult({}, errors=["Feed does not contain sufficient water for target product definition."])
-        recycle_water = s.get("water")-product_water
+        if recycle_wt is not None:
+            recycle_wt=float(recycle_wt)
+            if not (0.0 <= recycle_wt < product_wt <= 1.0):
+                return BlockResult({}, errors=["Molecular-sieve product/recycle ethanol fractions are invalid."])
+            total=s.total_tph
+            product_total=(etoh-recycle_wt*total)/(product_wt-recycle_wt)
+            if product_total < -1e-9 or product_total > total+1e-9:
+                return BlockResult({}, errors=["Molecular-sieve product and recycle compositions cannot close on the current feed."])
+            product_total=max(0.0,min(total,product_total))
+            recycle_total=total-product_total
+            product_etoh=product_total*product_wt
+            recycle_etoh=recycle_total*recycle_wt
+            product_water=product_total-product_etoh
+            recycle_water=recycle_total-recycle_etoh
+        else:
+            product_etoh=etoh*product_recovery
+            recycle_etoh=etoh-product_etoh
+            product_total = product_etoh/product_wt
+            product_water = product_total-product_etoh
+            if product_water > s.get("water"):
+                return BlockResult({}, errors=["Feed does not contain sufficient water for target product definition."])
+            recycle_water = s.get("water")-product_water
 
         product = Stream(
             f"{self.id}:product",
@@ -902,6 +918,7 @@ class MolecularSieveBlock(BaseBlock):
                 "minimum_adsorption_beds":p.get("minimum_adsorption_beds",2),
                 "feed_temperature_C":p.get("feed_temperature_C",120.0),
                 "specified_recycle_ethanol_wt_fraction":p.get("regeneration_recycle_ethanol_wt_fraction",0.72),
+                "calculated_recycle_ethanol_wt_fraction":(recycle_etoh/recycle.total_tph if recycle.total_tph else 0.0),
                 "specified_recycle_destination":p.get("regeneration_recycle_destination","P09 Rectification, tray 14"),
                 "closure_error_tph":_closure_error(inputs,outputs)
             },
@@ -1640,23 +1657,34 @@ class BeerConditioningBlock(BaseBlock):
         tin=s.temperature_C if s.temperature_C is not None else p.get("feed_temperature_C",32.0)
         tout=p.get("target_temperature_C",90.0)
         cp=p.get("cp_kJ_per_kgK",4.0)
-        q=s.total_tph*1000/3600*cp*max(0.0,tout-tin)
+        required_q=s.total_tph*1000/3600*cp*max(0.0,tout-tin)
+        selected_recovery=max(0.0,p.get("economiser_recovery_kW",required_q))
+        recovered_q=min(required_q,selected_recovery)
+        trim_heat=max(0.0,required_q-recovered_q)
         out=s.copy(new_id=f"{self.id}:outlet"); out.temperature_C=tout
+        warnings=[]
+        if selected_recovery > required_q+1e-6:
+            warnings.append("Selected P07 economiser recovery exceeds the current beer sensible-preheat requirement; recovery has been capped at the required duty.")
         return BlockResult(
             {"outlet":out},
             metrics={
-                "economiser_recovery_kW":q,
+                "required_preheat_kW":required_q,
+                "economiser_recovery_kW":recovered_q,
+                "economiser_recovery_fraction":(recovered_q/required_q if required_q else 0.0),
+                "external_trim_heat_kW":trim_heat,
                 "economiser_source":p.get("economiser_source","P08 beer-column bottoms"),
-                "selected_economiser_recovery_kW":p.get("economiser_recovery_kW",q),
+                "selected_economiser_recovery_kW":selected_recovery,
                 "ethanol_wt_fraction":s.get("ethanol")/s.total_tph if s.total_tph else 0.0,
                 "closure_error_tph":_closure_error(inputs,{"outlet":out})
             },
+            utilities=UtilityDemand(thermal_kW=trim_heat,peak_thermal_kW=trim_heat,other={"internal_heat_recovery_kW":recovered_q}),
             metadata=EngineeringMetadata(
                 status="EXCEL-MATCHED SCREENING BASIS",
                 basis="Workbook P07 beer preheat / bottoms-to-beer economiser",
                 confidence="MEDIUM",
-                note="P07 heat recovery is represented as an energy link to P08 bottoms; a material loop is not created in the acyclic flowsheet solver."
-            )
+                note="P07 now closes the cold-side energy balance explicitly. The workbook recovery duty is credited up to the beer preheat requirement; P08 bottoms temperature/enthalpy is still required before hot-side availability can be independently verified."
+            ),
+            warnings=warnings
         )
 
 class DistillationUtilityEnvelopeBlock(BaseBlock):

@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {createRoot} from 'react-dom/client'
 import {fetch as tauriFetch} from '@tauri-apps/plugin-http'
 import {check} from '@tauri-apps/plugin-updater'
+import {invoke} from '@tauri-apps/api/core'
 import {
   ReactFlow, Background, Controls, MiniMap, addEdge, MarkerType,
   useNodesState, useEdgesState, Handle, Position, ConnectionLineType, Panel
@@ -143,10 +144,10 @@ function DigitalTwin({dynamic,results}:any){
       <div className="dashboard-card"><span>Residue solids</span><strong>Separation cake</strong></div>
       <div className="dashboard-card"><span>Beer bottoms</span><strong>Wastewater stream</strong></div>
       <div className="dashboard-card"><span>Rectifier bottoms</span><strong>Wastewater stream</strong></div>
-      <div className="dashboard-card"><span>P10 sieve recycle</span><strong>72 wt% EtOH → P09 tray 14 (specified tear stream)</strong></div>
+      <div className="dashboard-card"><span>P10 sieve recycle</span><strong>72 wt% EtOH → P09 tray 14 · converged recycle</strong></div>
     </div>
     <div className="twin-readouts"><div><span>Completed feed</span><strong>{fmt(throughput.average_completed_feed_tph,2)} t/h</strong></div><div><span>Annual ethanol</span><strong>{fmt((throughput.ethanol_product_L_per_8000h_year||0)/1e6,2)} ML/y</strong></div><div><span>Blocked events</span><strong>{op.blocking_events||0}</strong></div><div><span>Pump contention</span><strong>{op.pump_contention_events||0}</strong></div></div>
-    <p className="model-boundary"><strong>V0.20.1 spreadsheet-aligned boundary:</strong> the application follows the master P01–P12 process sequence. P03 heat recovery is explicit after P02 and returns recovered sensible heat energetically to the incoming cold slurry; P07 represents beer-column-bottoms economising. P10 recycle is specified back to P09 tray 14 as a tear stream until iterative recycle convergence is implemented. P02/P04/P05 batch states are event-resolved; P06–P10 remain continuous engineering-screening calculations.</p>
+    <p className="model-boundary"><strong>V0.20.1 spreadsheet-aligned boundary:</strong> the application follows the master P01–P12 process sequence. P03 heat recovery is explicit after P02 and returns recovered sensible heat energetically to the incoming cold slurry; P07 represents beer-column-bottoms economising. P10 regeneration recycle is iteratively converged back to P09 on the workbook 72 wt% tear-stream basis. P02/P04/P05 batch states are event-resolved; P06–P10 remain continuous engineering-screening calculations.</p>
   </div>
 }
 
@@ -255,6 +256,7 @@ function App(){
   const [sensitivityParameter,setSensitivityParameter]=useState('glucan_to_glucose_conversion_fraction')
   const [sensitivityValues,setSensitivityValues]=useState('0.65, 0.72, 0.7674, 0.80, 0.85')
   const [isDirty,setIsDirty]=useState(false)
+  const [currentFilePath,setCurrentFilePath]=useState<string|null>(null)
   const importRef=useRef<HTMLInputElement|null>(null)
 
   async function checkForUpdates(manual=false){
@@ -402,18 +404,43 @@ function App(){
   }
 
   async function refreshSaved(){try{const r=await apiFetch(`${API}/api/saved`);if(r.ok)setSavedFlows(await r.json())}catch{}}
-  async function saveCurrent(nameOverride?:string){
+  async function saveCurrent(forceSaveAs=false){
     if(!flow)return
-    const name=(nameOverride??flow.name)?.trim()||'Untitled flowsheet';setBusy(true);setNotice('Saving…')
-    try{const r=await apiFetch(`${API}/api/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,flowsheet:{...flow,name}})});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(Array.isArray(data.detail)?data.detail.join(' '):data.detail||`Save failed (${r.status})`);setFlow({...flow,name:data.name||name});setIsDirty(false);await refreshSaved();setNotice(`Saved “${data.name||name}”`)}catch(e:any){setNotice(e.message)}finally{setBusy(false)}
+    setBusy(true);setNotice(forceSaveAs?'Choose where to save…':'Saving…')
+    try{
+      const name=(flow.name||'Untitled flowsheet').trim()||'Untitled flowsheet'
+      const content=JSON.stringify({...flow,name},null,2)
+      if(isDesktop){
+        const savedPath=await invoke<string|null>('save_flowsheet_file',{path:forceSaveAs?null:currentFilePath,suggestedName:name,content})
+        if(!savedPath){setNotice('Save cancelled');return}
+        setCurrentFilePath(savedPath);setFlow({...flow,name});setIsDirty(false)
+        setNotice(`Saved “${name}” · ${savedPath}`)
+      }else{
+        downloadText(`${name.replace(/[^a-z0-9-_ ]/gi,'')||'flowsheet'}.bioagri.json`,content)
+        setIsDirty(false);setNotice(`Downloaded “${name}”`)
+      }
+    }catch(e:any){setNotice(`Save failed: ${e.message||e}`)}finally{setBusy(false)}
   }
-  function saveAs(){if(!flow)return;const name=window.prompt('Name this flowsheet',flow.name||'Untitled flowsheet');if(name?.trim())saveCurrent(name.trim())}
-  function loadSaved(name:string){if(!name)return;if(isDirty&&!window.confirm('Open another flowsheet and discard unsaved changes?'))return;setBusy(true);setNotice(`Opening “${name}”…`);apiFetch(`${API}/api/saved/${encodeURIComponent(name)}`).then(r=>{if(!r.ok)throw new Error(`Open failed (${r.status})`);return r.json()}).then(f=>{setFlow(arrangeFlowsheet(f));setResults(null);setHistory([]);setFuture([]);setSelected(null);setSelectedStream(null);setIsDirty(false);setNotice(`Opened and organised “${name}”`)}).catch((e:any)=>setNotice(e.message)).finally(()=>setBusy(false))}
+  function saveAs(){saveCurrent(true)}
+  async function openFlowsheetFile(){
+    if(isDirty&&!window.confirm('Open another flowsheet and discard unsaved changes?'))return
+    if(!isDesktop){importRef.current?.click();return}
+    setBusy(true);setNotice('Choose a BioAgri flowsheet…')
+    try{
+      const opened=await invoke<{path:string,content:string}|null>('open_flowsheet_file')
+      if(!opened){setNotice('Open cancelled');return}
+      const value=JSON.parse(opened.content)
+      if(!value||!Array.isArray(value.blocks)||!Array.isArray(value.connections))throw new Error('This is not a valid BioAgri flowsheet file.')
+      setFlow(value);setResults(null);setHistory([]);setFuture([]);setSelected(null);setSelectedStream(null)
+      setCurrentFilePath(opened.path);setIsDirty(false);setNotice(`Opened “${value.name||opened.path}”`)
+    }catch(e:any){setNotice(`Open failed: ${e.message||e}`)}finally{setBusy(false)}
+  }
+  function loadSaved(name:string){if(!name)return;if(isDirty&&!window.confirm('Open another flowsheet and discard unsaved changes?'))return;setBusy(true);setNotice(`Opening legacy saved flow “${name}”…`);apiFetch(`${API}/api/saved/${encodeURIComponent(name)}`).then(r=>{if(!r.ok)throw new Error(`Open failed (${r.status})`);return r.json()}).then(f=>{setFlow(f);setResults(null);setHistory([]);setFuture([]);setSelected(null);setSelectedStream(null);setCurrentFilePath(null);setIsDirty(false);setNotice(`Opened legacy saved flow “${name}”`)}).catch((e:any)=>setNotice(e.message)).finally(()=>setBusy(false))}
   function loadPreset(which:string){if(isDirty&&!window.confirm('Open this route and discard unsaved changes?'))return;setBusy(true);setNotice('Opening route…');apiFetch(`${API}/api/${which}`).then(r=>{if(!r.ok)throw new Error(`Could not open route (${r.status})`);return r.json()}).then(f=>{setFlow(arrangeFlowsheet(f));setResults(null);setHistory([]);setFuture([]);setSelected(null);setSelectedStream(null);setIsDirty(false);setNotice('Route ready')}).catch((e:any)=>setNotice(e.message)).finally(()=>setBusy(false))}
-  function newFlowsheet(){if(isDirty&&!window.confirm('Start a new blank flowsheet? Unsaved changes will be lost.'))return;setFlow({name:'Untitled flowsheet',blocks:[],connections:[]});setResults(null);setSelected(null);setSelectedStream(null);setHistory([]);setFuture([]);setIsDirty(true);setNotice('Blank flowsheet created')}
+  function newFlowsheet(){if(isDirty&&!window.confirm('Start a new blank flowsheet? Unsaved changes will be lost.'))return;setFlow({name:'Untitled flowsheet',blocks:[],connections:[]});setResults(null);setSelected(null);setSelectedStream(null);setHistory([]);setFuture([]);setCurrentFilePath(null);setIsDirty(true);setNotice('Blank flowsheet created')}
 
   function exportFlowsheet(){if(flow)downloadText(`${(flow.name||'flowsheet').replace(/[^a-z0-9-_ ]/gi,'')}.json`,JSON.stringify(flow,null,2))}
-  function importFlowsheet(file?:File){if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const value=JSON.parse(String(reader.result));if(!Array.isArray(value.blocks)||!Array.isArray(value.connections))throw new Error('This is not a valid Bio-Agri flowsheet file.');setFlow(arrangeFlowsheet(value));setResults(null);setHistory([]);setFuture([]);setIsDirty(true);setNotice(`Imported “${value.name||file.name}”`)}catch(e:any){setNotice(e.message)}};reader.readAsText(file)}
+  function importFlowsheet(file?:File){if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const value=JSON.parse(String(reader.result));if(!Array.isArray(value.blocks)||!Array.isArray(value.connections))throw new Error('This is not a valid BioAgri flowsheet file.');setFlow(value);setResults(null);setHistory([]);setFuture([]);setCurrentFilePath(null);setIsDirty(true);setNotice(`Imported “${value.name||file.name}”`)}catch(e:any){setNotice(e.message)}};reader.readAsText(file)}
   async function downloadReport(){if(!flow)return;const reportWindow=window.open('','_blank');setBusy(true);try{const r=await apiFetch(`${API}/api/report`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({flowsheet:flow})});const text=await r.text();if(!r.ok)throw new Error('Report could not be generated.');if(reportWindow){reportWindow.document.open();reportWindow.document.write(text);reportWindow.document.close()}else downloadText(`${(flow.name||'run-report').replace(/[^a-z0-9-_ ]/gi,'')}-report.html`,text,'text/html');setNotice('PDF-ready engineering report opened — choose Print / save as PDF.')}catch(e:any){reportWindow?.close();setNotice(e.message)}finally{setBusy(false)}}
   async function runScenario(scenario:any){setAnalysisBusy(true);setAnalysisData(null);try{const r=await apiFetch(`${API}/api/scenario/run`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(scenario)});const data=await r.json();if(!r.ok)throw new Error(data.detail||'Scenario failed');setAnalysisData({kind:'scenario',name:scenario.name,data})}catch(e:any){setAnalysisData({kind:'error',message:e.message})}finally{setAnalysisBusy(false)}}
   async function compareWithReference(){if(!flow)return;setAnalysisBusy(true);try{const reference=await apiFetch(`${API}/api/reference-flowsheet`).then(r=>r.json());const r=await apiFetch(`${API}/api/compare`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({flowsheets:[reference,flow]})});const data=await r.json();if(!r.ok)throw new Error(data.detail||'Comparison failed');setAnalysisData({kind:'comparison',data:data.scenarios})}catch(e:any){setAnalysisData({kind:'error',message:e.message})}finally{setAnalysisBusy(false)}}
@@ -451,7 +478,7 @@ function App(){
         <div className="app-mark">B</div>
         <div className="title-stack">
           <input className="flow-name" aria-label="Flowsheet name" value={flow?.name||''} onChange={e=>{if(flow){setFlow({...flow,name:e.target.value});setIsDirty(true)}}}/>
-          <div className="app-subtitle">Bio-Agri Process Simulator <span>V{appMeta?.version||'0.19.1'} · Model {appMeta?.model_version||'0.19.0'}{isDirty?' · Unsaved changes':''}</span></div>
+          <div className="app-subtitle">Bio-Agri Process Simulator <span>V{appMeta?.version||'0.20.1'} · Model {appMeta?.model_version||'0.20.1'}{currentFilePath?` · ${currentFilePath.split(/[\\/]/).pop()}`:''}{isDirty?' · Unsaved changes':''}</span></div>
         </div>
       </div>
       <div className="toolbar" aria-label="Main controls">
@@ -460,15 +487,13 @@ function App(){
         <button className="icon-button" title="Redo" disabled={!future.length} onClick={redo}>↷</button>
         <div className="toolbar-divider"/>
         <button onClick={autoArrange} disabled={!flow?.blocks.length}>Organise flow</button>
-        <button onClick={()=>saveCurrent()} disabled={busy||!flow}>Save</button>
-        <select className="top-select" aria-label="Open saved flowsheet" value="" onChange={e=>loadSaved(e.target.value)}>
-          <option value="">Open…</option>{savedFlows.map((s:any)=><option key={s.name} value={s.name}>{s.name}</option>)}
-        </select>
+        <button onClick={()=>saveCurrent(false)} disabled={busy||!flow}>Save</button>
+        <button onClick={openFlowsheetFile} disabled={busy}>Open…</button>
         <details className="route-menu"><summary>Routes</summary><div className="menu-popover"><button onClick={()=>loadPreset('reference-flowsheet')}>Reference route</button><button onClick={()=>loadPreset('alternative-flowsheet')}>Alternative route</button></div></details>
         <button onClick={()=>setIssuesOpen(true)}>Issues {results?`(${errorCount+warningCount+decisionCount})`:''}</button>
         <button onClick={()=>setToolsOpen(true)}>Analyse</button>
         <div className="mode-switch" aria-label="Interface mode"><button className={userMode==='simple'?'active':''} onClick={()=>setUserMode('simple')}>Simple</button><button className={userMode==='engineering'?'active':''} onClick={()=>setUserMode('engineering')}>Engineering</button></div>
-        <details className="route-menu actions-menu"><summary>More</summary><div className="menu-popover"><button onClick={()=>checkForUpdates(true)}>Check for updates</button><button onClick={saveAs}>Save as…</button><button onClick={exportFlowsheet}>Export flowsheet</button><button onClick={()=>importRef.current?.click()}>Import flowsheet</button><button onClick={downloadReport} disabled={!results}>Print / save PDF report</button></div></details>
+        <details className="route-menu actions-menu"><summary>More</summary><div className="menu-popover"><button onClick={()=>checkForUpdates(true)}>Check for updates</button><button onClick={saveAs}>Save as…</button><button onClick={exportFlowsheet}>Export flowsheet</button><button onClick={()=>importRef.current?.click()}>Import flowsheet</button>{savedFlows.length>0&&<details><summary>Legacy saved flows</summary>{savedFlows.map((s:any)=><button key={s.name} onClick={()=>loadSaved(s.name)}>{s.name}</button>)}</details>}<button onClick={downloadReport} disabled={!results}>Print / save PDF report</button></div></details>
         <input ref={importRef} className="file-input" type="file" accept="application/json,.json" onChange={e=>{importFlowsheet(e.target.files?.[0]);e.currentTarget.value=''}}/>
         <button className="primary run-button" disabled={busy||!flow} onClick={runModel}>{busy?<><span className="spinner"/>Running</>:'Run'}</button>
       </div>

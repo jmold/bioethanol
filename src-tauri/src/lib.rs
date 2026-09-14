@@ -5,12 +5,62 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use tauri::{Manager, WindowEvent};
+use serde::Serialize;
+use std::fs;
+use std::path::PathBuf;
+
+#[derive(Serialize)]
+struct FileDialogResult {
+    path: String,
+    content: String,
+}
+
+#[tauri::command]
+fn open_flowsheet_file() -> Result<Option<FileDialogResult>, String> {
+    let Some(path) = rfd::FileDialog::new()
+        .add_filter("BioAgri flowsheet", &["bioagri.json", "json"])
+        .add_filter("JSON", &["json"])
+        .pick_file()
+    else {
+        return Ok(None);
+    };
+    let content = fs::read_to_string(&path)
+        .map_err(|e| format!("Could not read {}: {e}", path.display()))?;
+    Ok(Some(FileDialogResult {
+        path: path.to_string_lossy().to_string(),
+        content,
+    }))
+}
+
+#[tauri::command]
+fn save_flowsheet_file(path: Option<String>, suggested_name: String, content: String) -> Result<Option<String>, String> {
+    let target = if let Some(existing) = path.filter(|p| !p.trim().is_empty()) {
+        PathBuf::from(existing)
+    } else {
+        let safe_name = if suggested_name.trim().is_empty() { "Untitled flowsheet".to_string() } else { suggested_name };
+        let filename = if safe_name.to_lowercase().ends_with(".json") { safe_name } else { format!("{safe_name}.bioagri.json") };
+        let Some(selected) = rfd::FileDialog::new()
+            .add_filter("BioAgri flowsheet", &["bioagri.json", "json"])
+            .set_file_name(filename)
+            .save_file()
+        else {
+            return Ok(None);
+        };
+        selected
+    };
+    fs::write(&target, content)
+        .map_err(|e| format!("Could not save {}: {e}", target.display()))?;
+    Ok(Some(target.to_string_lossy().to_string()))
+}
+
+
 
 struct BackendProcess(Mutex<Option<Child>>);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![open_flowsheet_file, save_flowsheet_file])
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
