@@ -50,6 +50,7 @@ class Vessel:
     source_feed_equivalent_t: float=0.0
     pending_action: str|None=None
     transfer_source_id: str|None=None
+    batch_ids: list[str]=field(default_factory=list)
     completed_batches: int=0
     state_time_h: dict[str,float]=field(default_factory=dict)
 
@@ -116,6 +117,7 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
     events=[];timeline=[]
     source_feed_started=0.0;completed_source_feed=0.0
     starvation_events=0;blocking_events=0
+    batch_sequence=0
 
     def set_state(v,state,now,dur=0.0,action=None):
         v.state=state
@@ -146,35 +148,39 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
             transferred=src.batch_mass_t
             v.batch_mass_t += transferred
             v.source_feed_equivalent_t += src.source_feed_equivalent_t
-            events.append({"time_h":now,"event":"DIRECT_TRANSFER_COMPLETE","from":src.vessel_id,"to":v.vessel_id,"mass_t":transferred})
+            v.batch_ids.extend(x for x in src.batch_ids if x not in v.batch_ids)
+            events.append({"time_h":now,"event":"DIRECT_TRANSFER_COMPLETE","from":src.vessel_id,"to":v.vessel_id,"mass_t":transferred,"batch_ids":list(src.batch_ids)})
             src.batch_mass_t=0.0;src.source_feed_equivalent_t=0.0
+            src.batch_ids=[]
             src.transfer_source_id=None
             set_state(src,"CIP_TURNAROUND",now,_cip_duration(schedule_by_type[src.section_type]),"CIP_COMPLETE")
             v.transfer_source_id=None
             maybe_start_processing(v,now)
         elif v.pending_action=="FINAL_EMPTY_COMPLETE":
             completed_source_feed += v.source_feed_equivalent_t
-            events.append({"time_h":now,"event":"FINAL_DISCHARGE_COMPLETE","vessel":v.vessel_id,"mass_t":v.batch_mass_t})
-            v.batch_mass_t=0.0;v.source_feed_equivalent_t=0.0
+            events.append({"time_h":now,"event":"FINAL_DISCHARGE_COMPLETE","vessel":v.vessel_id,"mass_t":v.batch_mass_t,"batch_ids":list(v.batch_ids)})
+            v.batch_mass_t=0.0;v.source_feed_equivalent_t=0.0;v.batch_ids=[]
             set_state(v,"CIP_TURNAROUND",now,_cip_duration(schedule_by_type[v.section_type]),"CIP_COMPLETE")
         elif v.pending_action=="CIP_COMPLETE":
             v.completed_batches+=1
             set_state(v,"AVAILABLE",now)
 
     def try_source_fill(v,now):
-        nonlocal source_feed_started
+        nonlocal source_feed_started,batch_sequence
         if v.section_type!="pretreatment" or v.state!="AVAILABLE":return False
         pump=pumps[f'{v.section_id}_in']
         if not pump.available(now):
             pump.contention_count+=1;return False
         dur=_f(schedule_by_type[v.section_type].get("fill_time_h"))
         pump.reserve(now,dur,v.vessel_id)
+        batch_sequence += 1
+        v.batch_ids=[f"B{batch_sequence:05d}"]
         v.batch_mass_t=v.batch_capacity_t
         v.transfer_base_mass_t=0.0
         v.source_feed_equivalent_t=v.batch_capacity_t
         source_feed_started += v.batch_capacity_t
         set_state(v,"FILLING",now,dur,"SOURCE_FILL_COMPLETE")
-        events.append({"time_h":now,"event":"SOURCE_FILL_START","vessel":v.vessel_id,"mass_t":v.batch_capacity_t})
+        events.append({"time_h":now,"event":"SOURCE_FILL_START","vessel":v.vessel_id,"mass_t":v.batch_capacity_t,"batch_ids":list(v.batch_ids)})
         return True
 
     def downstream_candidates(section_type):
@@ -221,7 +227,7 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
         dest.transfer_source_id=src.vessel_id
         dest.transfer_base_mass_t=dest.batch_mass_t
         set_state(dest,"FILLING",now,dur,"TRANSFER_COMPLETE")
-        events.append({"time_h":now,"event":"DIRECT_TRANSFER_START","from":src.vessel_id,"to":dest.vessel_id,"mass_t":mass})
+        events.append({"time_h":now,"event":"DIRECT_TRANSFER_START","from":src.vessel_id,"to":dest.vessel_id,"mass_t":mass,"batch_ids":list(src.batch_ids)})
         return True
 
     def display_inventory(v,now):
@@ -253,12 +259,20 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
                 starvation_events+=1
             v.state_time_h[v.state]=v.state_time_h.get(v.state,0.0)+dt
 
+        active_transfers=[]
+        for v in vessels:
+            if v.state=="FILLING" and v.transfer_source_id:
+                active_transfers.append({"from":v.transfer_source_id,"to":v.vessel_id,"batch_ids":list(v.batch_ids)})
         timeline.append({
             "time_h":round(t,6),
             "states":{sec["block_id"]:[v.state for v in vessels if v.section_id==sec["block_id"]] for sec in sections[:3]},
+            "vessel_state":{v.vessel_id:v.state for v in vessels},
             "vessel_inventory_t":{v.vessel_id:display_inventory(v,t) for v in vessels},
             "vessel_fill_fraction":{v.vessel_id:(display_inventory(v,t)/v.batch_capacity_t if v.batch_capacity_t>0 else 0.0) for v in vessels},
+            "vessel_batch_ids":{v.vessel_id:list(v.batch_ids) for v in vessels},
+            "active_transfers":active_transfers,
             "pump_owner":{pid:(p.owner if not p.available(t) else None) for pid,p in pumps.items()},
+            "pump_state":{pid:("BUSY" if not p.available(t) else "IDLE") for pid,p in pumps.items()},
             "completed_source_feed_t":completed_source_feed,
         })
         t+=dt
@@ -274,7 +288,7 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
     out=dict(legacy)
     out.update({
         "engine":"Bio-Agri direct-transfer dynamic plant engine",
-        "engine_version":"0.22.0",
+        "engine_version":"0.23.0",
         "connected_material_transfers":True,
         "intermediate_buffers_assumed":False,
         "shared_pumps":[asdict(p) for p in pumps.values()],
@@ -296,7 +310,7 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
             "pump_contention_events":sum(p.contention_count for p in pumps.values()),
             "vessels":[{"vessel_id":v.vessel_id,"section_id":v.section_id,"completed_batches":v.completed_batches,"final_inventory_t":v.batch_mass_t,"state_time_h":dict(v.state_time_h)} for v in vessels],
         },
-        "status":"V0.20 DIRECT VESSEL-TO-VESSEL DISCRETE-EVENT SCREENING",
+        "status":"V0.23 DIRECT VESSEL-TO-VESSEL DIGITAL TWIN",
         "notes":list(legacy.get("notes",[]))+[
             "No intermediate buffer vessels are assumed by V0.20.",
             "Pretreatment transfers directly into hydrolysis vessels; hydrolysis transfers directly into fermentation vessels.",
