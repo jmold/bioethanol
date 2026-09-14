@@ -1657,23 +1657,34 @@ class BeerConditioningBlock(BaseBlock):
         tin=s.temperature_C if s.temperature_C is not None else p.get("feed_temperature_C",32.0)
         tout=p.get("target_temperature_C",90.0)
         cp=p.get("cp_kJ_per_kgK",4.0)
-        q=s.total_tph*1000/3600*cp*max(0.0,tout-tin)
+        required_q=s.total_tph*1000/3600*cp*max(0.0,tout-tin)
+        selected_recovery=max(0.0,p.get("economiser_recovery_kW",required_q))
+        recovered_q=min(required_q,selected_recovery)
+        trim_heat=max(0.0,required_q-recovered_q)
         out=s.copy(new_id=f"{self.id}:outlet"); out.temperature_C=tout
+        warnings=[]
+        if selected_recovery > required_q+1e-6:
+            warnings.append("Selected P07 economiser recovery exceeds the current beer sensible-preheat requirement; recovery has been capped at the required duty.")
         return BlockResult(
             {"outlet":out},
             metrics={
-                "economiser_recovery_kW":q,
+                "required_preheat_kW":required_q,
+                "economiser_recovery_kW":recovered_q,
+                "economiser_recovery_fraction":(recovered_q/required_q if required_q else 0.0),
+                "external_trim_heat_kW":trim_heat,
                 "economiser_source":p.get("economiser_source","P08 beer-column bottoms"),
-                "selected_economiser_recovery_kW":p.get("economiser_recovery_kW",q),
+                "selected_economiser_recovery_kW":selected_recovery,
                 "ethanol_wt_fraction":s.get("ethanol")/s.total_tph if s.total_tph else 0.0,
                 "closure_error_tph":_closure_error(inputs,{"outlet":out})
             },
+            utilities=UtilityDemand(thermal_kW=trim_heat,peak_thermal_kW=trim_heat,other={"internal_heat_recovery_kW":recovered_q}),
             metadata=EngineeringMetadata(
                 status="EXCEL-MATCHED SCREENING BASIS",
                 basis="Workbook P07 beer preheat / bottoms-to-beer economiser",
                 confidence="MEDIUM",
-                note="P07 heat recovery is represented as an energy link to P08 bottoms; a material loop is not created in the acyclic flowsheet solver."
-            )
+                note="P07 now closes the cold-side energy balance explicitly. The workbook recovery duty is credited up to the beer preheat requirement; P08 bottoms temperature/enthalpy is still required before hot-side availability can be independently verified."
+            ),
+            warnings=warnings
         )
 
 class DistillationUtilityEnvelopeBlock(BaseBlock):
