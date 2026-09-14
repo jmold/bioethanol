@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from typing import Dict, Type
 from models import Stream, PortSpec, BlockResult, UtilityDemand, Discharge, EquipmentRequirement, EngineeringMetadata
+from distillation_shortcut import shortcut_column
 
 class BaseBlock:
     type_name = "base"
@@ -700,6 +701,23 @@ class BeerColumnBlock(BaseBlock):
         condenser_fraction_of_reboiler = p.get("condenser_fraction_of_reboiler",0.0)
         condenser_kW = reboiler_kW*condenser_fraction_of_reboiler
 
+        feed_wt = etoh/s.total_tph if s.total_tph else 0.0
+        bottoms_wt = bottoms.get("ethanol")/bottoms.total_tph if bottoms.total_tph else 0.0
+        shortcut = shortcut_column(
+            feed_ethanol_wt_fraction=feed_wt,
+            distillate_ethanol_wt_fraction=wt,
+            bottoms_ethanol_wt_fraction=max(bottoms_wt,1e-9),
+            pressure_bar_abs=p.get("overhead_pressure_atm_abs",2.0)*1.01325,
+            actual_trays=p.get("actual_trays",32),
+            tray_efficiency_fraction=p.get("overall_tray_efficiency_fraction",0.48),
+            reflux_ratio=p.get("molar_reflux_ratio",3.0),
+            distillate_tph=overhead.total_tph,
+        )
+        if specific_reboiler_kWh_per_kg_ethanol <= 0:
+            reboiler_kW = shortcut.estimated_reboiler_kW
+            condenser_kW = shortcut.estimated_condenser_kW
+            steam_kgph = reboiler_kW*3600/useful_steam_enthalpy_kJ_per_kg if useful_steam_enthalpy_kJ_per_kg>0 else 0
+
         outputs={"overhead":overhead,"bottoms":bottoms}
         return BlockResult(
             outputs,
@@ -717,6 +735,7 @@ class BeerColumnBlock(BaseBlock):
                 "molar_reflux_ratio":p.get("molar_reflux_ratio"),
                 "overhead_pressure_atm_abs":p.get("overhead_pressure_atm_abs"),
                 "reboiler_type":p.get("reboiler_type"),
+                "shortcut_distillation":shortcut.to_dict(),
                 "closure_error_tph":_closure_error(inputs,outputs)
             },
             utilities=UtilityDemand(
@@ -736,14 +755,14 @@ class BeerColumnBlock(BaseBlock):
                 )
             ],
             metadata=EngineeringMetadata(
-                status="SCREENING / NOT RIGOROUS VLE",
-                basis="Current spreadsheet recovery model + parameterised utility envelope",
-                confidence="LOW",
-                note="Bottoms are provisionally classified as wastewater until downstream recovery/recycle decisions are defined."
+                status="MECHANISTIC SHORTCUT / WORKBOOK TARGET MASS BALANCE",
+                basis="Workbook product/recovery targets checked with native binary Fenske-Underwood-Gilliland shortcut",
+                confidence="MEDIUM",
+                note="Mass split remains workbook-selected while tray/reflux feasibility and thermal traffic are independently calculated. Bottoms remain provisionally classified as wastewater."
             ),
             warnings=[
-                "Beer column still uses a screening recovery model.",
-                "Reboiler and condenser duties remain inactive unless explicit specific-duty assumptions are entered."
+                "P08 mass split still follows the workbook target. FUG is used only as a diagnostic because P08 is configured as a stripper with a vapour side draw, not a simple conventional distillate column.",
+                *(["The conventional FUG diagnostic indicates the configured P08 trays/reflux would be insufficient for an equivalent simple column; side-draw/vendor modelling is required before treating this as a design failure."] if not shortcut.stage_feasible else [])
             ]
         )
 
@@ -799,6 +818,23 @@ class RectifierBlock(BaseBlock):
         condenser_fraction_of_reboiler = p.get("condenser_fraction_of_reboiler",0.0)
         condenser_kW = reboiler_kW*condenser_fraction_of_reboiler
 
+        feed_wt = etoh/s.total_tph if s.total_tph else 0.0
+        bottoms_wt = bottoms.get("ethanol")/bottoms.total_tph if bottoms.total_tph else p.get("bottoms_ethanol_wt_fraction_target",0.0005)
+        shortcut = shortcut_column(
+            feed_ethanol_wt_fraction=feed_wt,
+            distillate_ethanol_wt_fraction=overhead_wt,
+            bottoms_ethanol_wt_fraction=max(bottoms_wt,p.get("bottoms_ethanol_wt_fraction_target",0.0005),1e-9),
+            pressure_bar_abs=p.get("overhead_pressure_bar_abs",1.01325),
+            actual_trays=p.get("actual_trays",45),
+            tray_efficiency_fraction=p.get("overall_tray_efficiency_fraction",0.76),
+            reflux_ratio=p.get("molar_reflux_ratio",3.5),
+            distillate_tph=overhead.total_tph,
+        )
+        if specific_reboiler_kWh_per_kg_ethanol <= 0:
+            reboiler_kW = shortcut.estimated_reboiler_kW
+            condenser_kW = shortcut.estimated_condenser_kW
+            steam_kgph = reboiler_kW*3600/useful_steam_enthalpy_kJ_per_kg if useful_steam_enthalpy_kJ_per_kg>0 else 0
+
         outputs={"overhead":overhead,"bottoms":bottoms}
         return BlockResult(
             outputs,
@@ -814,6 +850,7 @@ class RectifierBlock(BaseBlock):
                 "molecular_sieve_recycle_tray_from_top":p.get("molecular_sieve_recycle_tray_from_top"),
                 "molar_reflux_ratio":p.get("molar_reflux_ratio"),
                 "bottoms_ethanol_wt_fraction_target":p.get("bottoms_ethanol_wt_fraction_target"),
+                "shortcut_distillation":shortcut.to_dict(),
                 "closure_error_tph":_closure_error(inputs,outputs)
             },
             utilities=UtilityDemand(
@@ -833,13 +870,14 @@ class RectifierBlock(BaseBlock):
                 )
             ],
             metadata=EngineeringMetadata(
-                status="SCREENING / NOT RIGOROUS VLE",
-                basis="Current spreadsheet rectification model + parameterised utility envelope",
-                confidence="LOW"
+                status="MECHANISTIC SHORTCUT / WORKBOOK TARGET MASS BALANCE",
+                basis="Workbook rectifier target checked with native binary Fenske-Underwood-Gilliland shortcut",
+                confidence="MEDIUM",
+                note="P09 workbook overhead and bottoms targets remain the mass-balance basis while stage/reflux feasibility and internal vapour-duty estimates are calculated independently."
             ),
             warnings=[
-                "Rectifier remains a screening model.",
-                "Thermal duties remain inactive unless explicit specific-duty assumptions are entered."
+                "P09 shortcut model is binary ethanol/water and does not replace a rigorous activity-coefficient or rate-based column model.",
+                *(["Configured P09 tray/reflux design is below shortcut requirement."] if not shortcut.stage_feasible else [])
             ]
         )
 

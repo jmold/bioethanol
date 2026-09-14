@@ -6,6 +6,7 @@ on:
       - v0.20-connected-engine
       - v0.20.1-sheet-alignment
       - v0.20.2-file-io
+      - v0.21-distillation-fidelity
   pull_request:
     branches:
       - main

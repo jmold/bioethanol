@@ -121,7 +121,7 @@ function DigitalTwin({dynamic,results}:any){
   const Box=({title,sub,tone='#526170'}:any)=><div style={{minWidth:120,padding:'12px 10px',border:'1px solid #d3dde3',borderRadius:10,background:'#fff',textAlign:'center'}}><div style={{width:28,height:28,borderRadius:8,margin:'0 auto 7px',background:tone,opacity:.16}}/><strong style={{display:'block'}}>{title}</strong><span style={{fontSize:11,color:'#65727c'}}>{sub}</span></div>
   const Pipe=({active=false,label=''}:any)=><div className={`twin-pipe ${active?'flowing':''}`} style={{minWidth:54}}><i/>{label&&<b>{label}</b>}</div>
   return <div className="twin-view">
-    <div className="twin-toolbar"><div><span>V0.20.1 P01–P12 PLANT REPLAY</span><strong>Plant time {fmt(row.time_h||0,2)} h</strong></div><div className="twin-controls"><button onClick={()=>setPlaying(v=>!v)}>{playing?'Pause':'Play'}</button><button onClick={()=>setIndex(i=>Math.min(i+1,rows.length-1))}>Step</button><label>Speed <select value={speed} onChange={e=>setSpeed(Number(e.target.value))}><option value="1">1×</option><option value="4">4×</option><option value="12">12×</option><option value="32">32×</option></select></label></div></div>
+    <div className="twin-toolbar"><div><span>V0.21 P01–P12 PLANT REPLAY</span><strong>Plant time {fmt(row.time_h||0,2)} h</strong></div><div className="twin-controls"><button onClick={()=>setPlaying(v=>!v)}>{playing?'Pause':'Play'}</button><button onClick={()=>setIndex(i=>Math.min(i+1,rows.length-1))}>Step</button><label>Speed <select value={speed} onChange={e=>setSpeed(Number(e.target.value))}><option value="1">1×</option><option value="4">4×</option><option value="12">12×</option><option value="32">32×</option></select></label></div></div>
     <input className="twin-scrubber" type="range" min="0" max={Math.max(0,rows.length-1)} value={index} onChange={e=>{setPlaying(false);setIndex(Number(e.target.value))}} aria-label="Digital twin time"/>
     <div style={{overflowX:'auto',padding:'8px 0 18px'}}><div style={{display:'flex',alignItems:'center',minWidth:1900,gap:4}}>
       <div className="feed-hopper"><div className="hopper-bin"/><strong>P01 Miscanthus + water</strong><span>Feed preparation & slurry make-up</span></div>
@@ -147,7 +147,7 @@ function DigitalTwin({dynamic,results}:any){
       <div className="dashboard-card"><span>P10 sieve recycle</span><strong>72 wt% EtOH → P09 tray 14 · converged recycle</strong></div>
     </div>
     <div className="twin-readouts"><div><span>Completed feed</span><strong>{fmt(throughput.average_completed_feed_tph,2)} t/h</strong></div><div><span>Annual ethanol</span><strong>{fmt((throughput.ethanol_product_L_per_8000h_year||0)/1e6,2)} ML/y</strong></div><div><span>Blocked events</span><strong>{op.blocking_events||0}</strong></div><div><span>Pump contention</span><strong>{op.pump_contention_events||0}</strong></div></div>
-    <p className="model-boundary"><strong>V0.20.1 spreadsheet-aligned boundary:</strong> the application follows the master P01–P12 process sequence. P03 heat recovery is explicit after P02 and returns recovered sensible heat energetically to the incoming cold slurry; P07 represents beer-column-bottoms economising. P10 regeneration recycle is iteratively converged back to P09 on the workbook 72 wt% tear-stream basis. P02/P04/P05 batch states are event-resolved; P06–P10 remain continuous engineering-screening calculations.</p>
+    <p className="model-boundary"><strong>V0.21 spreadsheet-aligned boundary:</strong> the application follows the master P01–P12 process sequence. P03 heat recovery is explicit after P02 and returns recovered sensible heat energetically to the incoming cold slurry; P07 represents beer-column-bottoms economising. P10 regeneration recycle is iteratively converged back to P09 on the workbook 72 wt% tear-stream basis. P02/P04/P05 batch states are event-resolved; P06–P10 remain continuous engineering-screening calculations.</p>
   </div>
 }
 
@@ -478,7 +478,7 @@ function App(){
         <div className="app-mark">B</div>
         <div className="title-stack">
           <input className="flow-name" aria-label="Flowsheet name" value={flow?.name||''} onChange={e=>{if(flow){setFlow({...flow,name:e.target.value});setIsDirty(true)}}}/>
-          <div className="app-subtitle">Bio-Agri Process Simulator <span>V{appMeta?.version||'0.20.1'} · Model {appMeta?.model_version||'0.20.1'}{currentFilePath?` · ${currentFilePath.split(/[\\/]/).pop()}`:''}{isDirty?' · Unsaved changes':''}</span></div>
+          <div className="app-subtitle">Bio-Agri Process Simulator <span>V{appMeta?.version||'0.21.0'} · Model {appMeta?.model_version||'0.21.0'}{currentFilePath?` · ${currentFilePath.split(/[\\/]/).pop()}`:''}{isDirty?' · Unsaved changes':''}</span></div>
         </div>
       </div>
       <div className="toolbar" aria-label="Main controls">
@@ -567,7 +567,17 @@ function App(){
             </>:<>
               {!results?<div className="inspector-empty compact"><strong>No current results</strong><p>Run the process model to calculate this block.</p><button className="primary" onClick={runModel}>Run model</button></div>:<>
                 <div className="section-title">Latest calculation</div>
-                <div className="metric-list">{Object.entries(selectedResult?.metrics||{}).slice(0,12).map(([k,v]:any)=><div key={k}><span>{pretty(k)}</span><strong>{typeof v==='number'?fmt(v,4):String(v)}</strong></div>)}</div>
+                <div className="metric-list">{Object.entries(selectedResult?.metrics||{}).filter(([k,v]:any)=>k!=='shortcut_distillation'&&(typeof v==='number'||typeof v==='string'||typeof v==='boolean')).slice(0,12).map(([k,v]:any)=><div key={k}><span>{pretty(k)}</span><strong>{typeof v==='number'?fmt(v,4):String(v)}</strong></div>)}</div>
+                {selectedResult?.metrics?.shortcut_distillation&&<><div className="section-title">Distillation design check</div><div className="metric-list">
+                  <div><span>Relative volatility</span><strong>{fmt(selectedResult.metrics.shortcut_distillation.relative_volatility,3)}</strong></div>
+                  <div><span>Minimum stages · Fenske</span><strong>{fmt(selectedResult.metrics.shortcut_distillation.minimum_stages_fenske,2)}</strong></div>
+                  <div><span>Minimum reflux · Underwood</span><strong>{fmt(selectedResult.metrics.shortcut_distillation.minimum_reflux_underwood,2)}</strong></div>
+                  <div><span>Required stages · Gilliland</span><strong>{fmt(selectedResult.metrics.shortcut_distillation.required_theoretical_stages_gilliland,2)}</strong></div>
+                  <div><span>Installed effective stages</span><strong>{fmt(selectedResult.metrics.shortcut_distillation.installed_effective_stages,2)}</strong></div>
+                  <div><span>Stage margin</span><strong>{fmt(selectedResult.metrics.shortcut_distillation.stage_margin,2)}</strong></div>
+                  <div><span>Reflux / minimum reflux</span><strong>{fmt(selectedResult.metrics.shortcut_distillation.reflux_to_minimum_ratio,2)} ×</strong></div>
+                  <div><span>Shortcut stage check</span><strong>{selectedResult.metrics.shortcut_distillation.stage_feasible?'PASS':'CHECK'}</strong></div>
+                </div></>}
                 {!!selectedResult?.utilities&&<><div className="section-title">Utilities</div><div className="metric-list">{Object.entries(selectedResult.utilities).filter(([,v]:any)=>typeof v==='number'&&Math.abs(v)>1e-12).map(([k,v]:any)=><div key={k}><span>{pretty(k)}</span><strong>{fmt(v,3)}</strong></div>)}</div></>}
                 {selectedResult?.metadata&&<details className="advanced"><summary>Engineering basis</summary><div className="advanced-body metric-list"><div><span>Status</span><strong>{selectedResult.metadata.status}</strong></div><div><span>Confidence</span><strong>{selectedResult.metadata.confidence}</strong></div><div className="stacked"><span>Basis</span><strong>{selectedResult.metadata.basis}</strong></div></div></details>}
                 {!!selectedResult?.errors?.length&&<div className="inline-message error"><strong>Model issue</strong>{selectedResult.errors.map((x:string)=><span key={x}>{x}</span>)}</div>}
