@@ -103,6 +103,65 @@ function TwinVessel({label,state,count,tone,level}:any){
   </div>
 }
 
+function VesselBank({row,schedules}:any){
+  const sections=[['pretreat','P02 Pretreatment','#cb7a36'],['hydro','P04 Hydrolysis','#4c9a70'],['ferm','P05 Fermentation','#6779b8']]
+  return <div className="vessel-bank">{sections.map(([id,label,tone]:any)=>{
+    const schedule=(schedules||[]).find((v:any)=>v.block_id===id)||{}
+    const count=Number(schedule.installed_vessels||0)
+    return <section key={id} className="vessel-bank-section"><div className="vessel-bank-head"><div><span>{label}</span><strong>{count} vessels · {fmt(schedule.vessel_working_volume_m3,0)} m³ working volume</strong></div><small>{fmt(schedule.utilisation_fraction*100,1)}% design utilisation</small></div><div className="vessel-bank-grid">
+      {Array.from({length:count},(_,i)=>{const vid=`${id}-V${String(i+1).padStart(2,'0')}`;const state=row.vessel_state?.[vid]||'AVAILABLE';const frac=Number(row.vessel_fill_fraction?.[vid]||0);const mass=Number(row.vessel_inventory_t?.[vid]||0);const batches=row.vessel_batch_ids?.[vid]||[];return <article key={vid} className={`live-vessel-card state-${String(state).toLowerCase().replaceAll('_','-')}`} style={{'--vessel-tone':tone} as any}><div className="live-vessel-graphic"><i style={{height:`${Math.max(2,Math.min(100,frac*100))}%`}}/></div><div><span>{vid}</span><strong>{pretty(state)}</strong><small>{fmt(mass,1)} t · {fmt(frac*100,0)}%</small>{batches.length>0&&<em>{batches.join(' + ')}</em>}</div></article>})}
+    </div></section>
+  })}</div>
+}
+
+function PumpPanel({row,dynamic}:any){
+  const pumps=dynamic?.shared_pumps||[]
+  return <div className="pump-panel">{pumps.map((p:any)=>{const state=row.pump_state?.[p.pump_id]||'IDLE';const owner=row.pump_owner?.[p.pump_id];return <div key={p.pump_id} className={`pump-chip ${state==='BUSY'?'busy':''}`}><i/><span>{p.name}</span><strong>{state}</strong><small>{owner||'Available'}</small></div>})}</div>
+}
+
+function SchedulerGantt({dynamic}:any){
+  const rows=dynamic?.timeline||[]
+  if(!rows.length)return null
+  const horizon=Number(dynamic.horizon_h||rows.at(-1)?.time_h||168)
+  const vesselIds=Object.keys(rows[0]?.vessel_state||{})
+  const segmentsFor=(vid:string)=>{
+    const out:any[]=[];let current='';let start=0
+    rows.forEach((r:any,i:number)=>{const state=r.vessel_state?.[vid]||'AVAILABLE';if(i===0){current=state;start=Number(r.time_h||0);return}if(state!==current){out.push({state:current,start,end:Number(r.time_h||0)});current=state;start=Number(r.time_h||0)}})
+    out.push({state:current,start,end:horizon});return out
+  }
+  return <div className="gantt-wrap"><div className="gantt-axis"><span>Vessel</span><div>{[0,25,50,75,100].map(p=><i key={p} style={{left:`${p}%`}}><b>{fmt(horizon*p/100,0)}h</b></i>)}</div></div>{vesselIds.map(vid=><div className="gantt-row" key={vid}><strong>{vid}</strong><div>{segmentsFor(vid).map((s:any,i:number)=><span key={i} className={`gantt-segment state-${String(s.state).toLowerCase().replaceAll('_','-')}`} style={{left:`${(s.start/horizon)*100}%`,width:`${Math.max(.25,((s.end-s.start)/horizon)*100)}%`}} title={`${pretty(s.state)} · ${fmt(s.start,2)}–${fmt(s.end,2)} h`}/>)}</div></div>)}</div>
+}
+
+function PlantDashboard({results}:any){
+  const dynamic=results?.dynamic_plant||{}
+  const throughput=dynamic.connected_throughput||{}
+  const util=results?.utility_totals||{}
+  const closure=results?.overall_material_closure||{}
+  const op=dynamic.operability||{}
+  const annualL=Number(throughput.ethanol_product_L_per_8000h_year||0)
+  const elec=Number(util.electricity_kW||0),heat=Number(util.thermal_kW||0)
+  const productLph=annualL/8000
+  const specificElec=productLph>0?elec/productLph:0
+  const specificHeat=productLph>0?heat/productLph:0
+  const bottleneck=(dynamic.vessel_schedules||[]).slice().sort((a:any,b:any)=>Number(b.utilisation_fraction||0)-Number(a.utilisation_fraction||0))[0]
+  return <div className="plant-dashboard">
+    <div className="page-hero"><div><span className="eyebrow">Plant dashboard</span><h2>Current design at a glance</h2><p>Production, utilities, scheduling health and engineering confidence from the latest run.</p></div><div className={`rag-status ${results?.errors?.length?'danger':results?.warnings?.length?'warning':'good'}`}><i/>{results?.errors?.length?'ACTION REQUIRED':results?.warnings?.length?'REVIEW WARNINGS':'MODEL HEALTHY'}</div></div>
+    <div className="dashboard-kpi-grid">
+      <article><span>Ethanol production</span><strong>{fmt(productLph,1)} L/h</strong><small>{fmt(annualL/1e6,2)} ML per 8,000 h year</small></article>
+      <article><span>Scheduled feed</span><strong>{fmt(throughput.average_completed_feed_tph,3)} t/h</strong><small>Completed end-to-end feed</small></article>
+      <article><span>Electricity</span><strong>{fmt(elec,1)} kW</strong><small>{fmt(specificElec,3)} kWh/L ethanol</small></article>
+      <article><span>Process heat</span><strong>{fmt(heat,1)} kW</strong><small>{fmt(specificHeat,3)} kWh/L ethanol</small></article>
+      <article><span>Material closure</span><strong>{fmt(closure.closure_error_tph||0,6)} t/h</strong><small>{Math.abs(Number(closure.closure_error_tph||0))<1e-6?'Closed':'Review balance'}</small></article>
+      <article><span>Current bottleneck</span><strong>{bottleneck?.block_name||'—'}</strong><small>{fmt(Number(bottleneck?.utilisation_fraction||0)*100,1)}% design utilisation</small></article>
+    </div>
+    <div className="dashboard-two-col">
+      <section className="dashboard-panel"><div className="section-heading"><div><span>Operability</span><h3>Scheduler health</h3></div></div><div className="metric-list"><div><span>Blocking events</span><strong>{op.blocking_events||0}</strong></div><div><span>Starvation events</span><strong>{op.starvation_events||0}</strong></div><div><span>Pump contention events</span><strong>{op.pump_contention_events||0}</strong></div><div><span>Connected mass-balance error</span><strong>{fmt(throughput.mass_balance_error_t||0,8)} t</strong></div></div></section>
+      <section className="dashboard-panel"><div className="section-heading"><div><span>Engineering basis</span><h3>Open assumptions & decisions</h3></div></div>{(results?.open_decisions||[]).slice(0,8).map((d:any)=><div className="decision-row compact" key={d.block_id}><span className={`status-dot ${statusClass(d.status)}`}/><div><strong>{d.block_name}</strong><small>{d.note||d.basis}</small></div></div>)}{!(results?.open_decisions||[]).length&&<div className="empty-small">No open design decisions reported.</div>}</section>
+    </div>
+    <div className="dashboard-panel"><div className="section-heading"><div><span>Section utilisation</span><h3>Batch capacity margin</h3></div></div><div className="dashboard-util-grid">{(dynamic.vessel_schedules||[]).map((v:any)=><div key={v.block_id}><span>{v.block_name}</span><UtilisationBar value={v.utilisation_fraction}/><small>{v.installed_vessels} installed · {v.required_vessels} required</small></div>)}</div></div>
+  </div>
+}
+
 function DigitalTwin({dynamic,results}:any){
   const rows=dynamic?.timeline||[]
   const [index,setIndex]=useState(0),[playing,setPlaying]=useState(false),[speed,setSpeed]=useState(4)
@@ -121,7 +180,7 @@ function DigitalTwin({dynamic,results}:any){
   const Box=({title,sub,tone='#526170'}:any)=><div style={{minWidth:120,padding:'12px 10px',border:'1px solid #d3dde3',borderRadius:10,background:'#fff',textAlign:'center'}}><div style={{width:28,height:28,borderRadius:8,margin:'0 auto 7px',background:tone,opacity:.16}}/><strong style={{display:'block'}}>{title}</strong><span style={{fontSize:11,color:'#65727c'}}>{sub}</span></div>
   const Pipe=({active=false,label=''}:any)=><div className={`twin-pipe ${active?'flowing':''}`} style={{minWidth:54}}><i/>{label&&<b>{label}</b>}</div>
   return <div className="twin-view">
-    <div className="twin-toolbar"><div><span>V0.22 P01–P12 PLANT REPLAY</span><strong>Plant time {fmt(row.time_h||0,2)} h</strong></div><div className="twin-controls"><button onClick={()=>setPlaying(v=>!v)}>{playing?'Pause':'Play'}</button><button onClick={()=>setIndex(i=>Math.min(i+1,rows.length-1))}>Step</button><label>Speed <select value={speed} onChange={e=>setSpeed(Number(e.target.value))}><option value="1">1×</option><option value="4">4×</option><option value="12">12×</option><option value="32">32×</option></select></label></div></div>
+    <div className="twin-toolbar"><div><span>V0.23 P01–P12 LIVE PLANT REPLAY</span><strong>Plant time {fmt(row.time_h||0,2)} h</strong></div><div className="twin-controls"><button onClick={()=>setPlaying(v=>!v)}>{playing?'Pause':'Play'}</button><button onClick={()=>setIndex(i=>Math.min(i+1,rows.length-1))}>Step</button><label>Speed <select value={speed} onChange={e=>setSpeed(Number(e.target.value))}><option value="1">1×</option><option value="4">4×</option><option value="12">12×</option><option value="32">32×</option></select></label></div></div>
     <input className="twin-scrubber" type="range" min="0" max={Math.max(0,rows.length-1)} value={index} onChange={e=>{setPlaying(false);setIndex(Number(e.target.value))}} aria-label="Digital twin time"/>
     <div style={{overflowX:'auto',padding:'8px 0 18px'}}><div style={{display:'flex',alignItems:'center',minWidth:1900,gap:4}}>
       <div className="feed-hopper"><div className="hopper-bin"/><strong>P01 Miscanthus + water</strong><span>Feed preparation & slurry make-up</span></div>
@@ -147,7 +206,9 @@ function DigitalTwin({dynamic,results}:any){
       <div className="dashboard-card"><span>P10 sieve recycle</span><strong>72 wt% EtOH → P09 tray 14 · converged recycle</strong></div>
     </div>
     <div className="twin-readouts"><div><span>Completed feed</span><strong>{fmt(throughput.average_completed_feed_tph,2)} t/h</strong></div><div><span>Annual ethanol</span><strong>{fmt((throughput.ethanol_product_L_per_8000h_year||0)/1e6,2)} ML/y</strong></div><div><span>Blocked events</span><strong>{op.blocking_events||0}</strong></div><div><span>Pump contention</span><strong>{op.pump_contention_events||0}</strong></div></div>
-    <p className="model-boundary"><strong>V0.22 spreadsheet-aligned boundary:</strong> the application follows the master P01–P12 process sequence. P03 heat recovery is explicit after P02 and returns recovered sensible heat energetically to the incoming cold slurry; P07 represents beer-column-bottoms economising. P10 regeneration recycle is iteratively converged back to P09 on the workbook 72 wt% tear-stream basis. P02/P04/P05 batch states are event-resolved; P06–P10 remain continuous engineering-screening calculations.</p>
+    <section className="twin-live-section"><div className="section-heading"><div><span>Live batch vessels</span><h3>Individual vessel inventory & state</h3></div><p>Levels, states and batch lineage are taken directly from the connected event timeline.</p></div><VesselBank row={row} schedules={schedules}/></section>
+    <section className="twin-live-section"><div className="section-heading"><div><span>Transfer resources</span><h3>Pump status</h3></div><p>Busy pumps show the vessel currently owning the resource.</p></div><PumpPanel row={row} dynamic={dynamic}/></section>
+    <p className="model-boundary"><strong>V0.23 spreadsheet-aligned boundary:</strong> the application follows the master P01–P12 process sequence. P03 heat recovery is explicit after P02 and returns recovered sensible heat energetically to the incoming cold slurry; P07 represents beer-column-bottoms economising. P10 regeneration recycle is iteratively converged back to P09 on the workbook 72 wt% tear-stream basis. P02/P04/P05 batch states are event-resolved; P06–P10 remain continuous engineering-screening calculations.</p>
   </div>
 }
 
@@ -165,7 +226,8 @@ function SchedulerPage({dynamic,flow}:any){
       <div><span>Pump contention</span><strong>{op.pump_contention_events||0}</strong><p>Transfer resource conflicts</p></div>
     </div>
     <section className="operations-section"><div className="section-heading"><div><span>Installed capacity</span><h3>Vessel and transfer-pump assessment</h3></div><p>Fill and empty durations are working volume ÷ selected transfer-pump rate.</p></div><div className="vessel-cards">{schedules.map((v:any)=><article key={v.block_id} className={v.bottleneck?'constraint':''}><div><span>{v.block_name}</span><strong>{v.installed_vessels} installed / {v.required_vessels} required</strong></div><UtilisationBar value={v.utilisation_fraction}/><dl><div><dt>Working volume</dt><dd>{fmt(v.vessel_working_volume_m3,1)} m³</dd></div><div><dt>Batch mass</dt><dd>{fmt(v.batch_mass_t,1)} t</dd></div><div><dt>Inlet pump</dt><dd>{fmt(v.inlet_transfer_pump_rate_m3ph,2)} m³/h</dd></div><div><dt>Fill time</dt><dd>{fmt(v.fill_time_h,2)} h</dd></div><div><dt>Outlet pump</dt><dd>{fmt(v.outlet_transfer_pump_rate_m3ph,2)} m³/h</dd></div><div><dt>Empty time</dt><dd>{fmt(v.empty_time_h,2)} h</dd></div><div><dt>Cycle</dt><dd>{fmt(v.cycle_time_h,2)} h</dd></div><div><dt>Capacity</dt><dd>{fmt(v.capacity_tph,3)} t/h</dd></div></dl></article>)}</div></section>
-    <section className="operations-section"><div className="section-heading"><div><span>Representative cycles</span><h3>Batch phase timeline</h3></div><p>Phase lengths are proportional to configured transfer, reaction and CIP durations.</p></div><div className="timeline-list">{schedules.map((v:any)=><BatchTimeline key={v.block_id} schedule={v}/>)}</div></section>
+    <section className="operations-section"><div className="section-heading"><div><span>Vessel schedule</span><h3>Full production Gantt</h3></div><p>Actual state occupancy for every installed batch vessel across the simulation horizon.</p></div><SchedulerGantt dynamic={dynamic}/></section>
+    <section className="operations-section"><div className="section-heading"><div><span>Representative cycles</span><h3>Configured batch cycle</h3></div><p>Reference phase durations used by the event engine.</p></div><div className="timeline-list">{schedules.map((v:any)=><BatchTimeline key={v.block_id} schedule={v}/>)}</div></section>
     <section className="operations-section"><div className="section-heading"><div><span>Time-domain demand</span><h3>Utilities through the schedule</h3></div><p>{dynamic.horizon_h}-hour horizon · {dynamic.timestep_min}-minute timestep.</p></div><div className="series-grid"><MiniSeries rows={dynamic.timeline} valueKey="net_external_thermal_kW" label="Net external heat (kW)" color="#c46b2b"/><MiniSeries rows={dynamic.timeline} valueKey="electrical_kW" label="Electrical demand (kW)" color="#2e6f94"/><MiniSeries rows={dynamic.timeline} valueKey="used_heat_recovery_kW" label="Heat recovered (kW)" color="#3d8b5d"/><MiniSeries rows={dynamic.timeline} valueKey="cooling_kW" label="Cooling demand (kW)" color="#547fc1"/></div></section>
     <section className="operations-section"><div className="section-heading"><div><span>Operability log</span><h3>Recent transfer and batch events</h3></div><p>Useful for diagnosing blocking, starvation and transfer sequencing.</p></div><div className="event-table">{(dynamic.event_log||[]).slice(-40).reverse().map((e:any,i:number)=><div key={i}><span>{fmt(e.time_h,2)} h</span><strong>{pretty(e.event)}</strong><small>{e.vessel||[e.from,e.to].filter(Boolean).join(' → ')||''}</small></div>)}</div></section>
     <p className="model-boundary"><strong>Scheduler boundary:</strong> no intermediate buffer vessels are assumed. P02 → P04 → P05 transfers are direct and event-resolved. P06 onward remains continuous process-screening logic.</p>
@@ -260,7 +322,7 @@ function App(){
   const [libraryQuery,setLibraryQuery]=useState('')
   const [inspectorTab,setInspectorTab]=useState<'configure'|'results'>('configure')
   const [dashboardOpen,setDashboardOpen]=useState(false)
-  const [activePage,setActivePage]=useState<'flowsheet'|'twin'|'scheduler'>('flowsheet')
+  const [activePage,setActivePage]=useState<'dashboard'|'flowsheet'|'twin'|'scheduler'>('dashboard')
   const [resultsTab,setResultsTab]=useState<'summary'|'streams'|'heat'|'electrical'>('summary')
   const [history,setHistory]=useState<Flowsheet[]>([])
   const [future,setFuture]=useState<Flowsheet[]>([])
@@ -509,6 +571,7 @@ function App(){
         <button className="icon-button" title="Redo" disabled={!future.length} onClick={redo}>↷</button>
         <div className="toolbar-divider"/>
         <div className="page-nav" aria-label="Primary workspace">
+          <button className={activePage==='dashboard'?'active':''} onClick={()=>setActivePage('dashboard')}>Dashboard</button>
           <button className={activePage==='flowsheet'?'active':''} onClick={()=>setActivePage('flowsheet')}>Flowsheet</button>
           <button className={activePage==='twin'?'active':''} onClick={()=>setActivePage('twin')}>Digital Twin</button>
           <button className={activePage==='scheduler'?'active':''} onClick={()=>setActivePage('scheduler')}>Scheduler</button>
@@ -617,6 +680,7 @@ function App(){
       </aside>}
     </div>
 
+    {activePage==='dashboard'&&<main className="primary-page-shell"><div className="primary-page-head"><div><span className="eyebrow">Dashboard</span><h1>Plant performance & design health</h1><p>Production, utilities, capacity and engineering confidence from the latest calculation.</p></div><button className="primary" onClick={runModel} disabled={busy||!flow}>{busy?'Running…':'Run current model'}</button></div><div className="primary-page-scroll">{results?<PlantDashboard results={results}/>:<div className="primary-page-empty"><strong>No plant run yet</strong><p>Run the current flowsheet to populate the plant dashboard.</p></div>}</div></main>}
     {activePage==='twin'&&<main className="primary-page-shell"><div className="primary-page-head"><div><span className="eyebrow">Digital Twin</span><h1>Plant replay & live batch state</h1><p>Full-width time-domain view of the connected process, vessel inventories and transfers.</p></div><button className="primary" onClick={runModel} disabled={busy||!flow}>{busy?'Running…':'Run current model'}</button></div><div className="primary-page-scroll">{results?.dynamic_plant?<DigitalTwin dynamic={results.dynamic_plant} results={results}/>:<div className="primary-page-empty"><strong>No Digital Twin run yet</strong><p>Run the flowsheet to generate the connected plant replay.</p></div>}</div></main>}
     {activePage==='scheduler'&&<main className="primary-page-shell"><div className="primary-page-head"><div><span className="eyebrow">Scheduler</span><h1>Production schedule & operability</h1><p>Vessel capacity, batch phases, direct transfers, pumps and plant constraints.</p></div><button className="primary" onClick={runModel} disabled={busy||!flow}>{busy?'Running…':'Recalculate schedule'}</button></div><div className="primary-page-scroll"><SchedulerPage dynamic={results?.dynamic_plant} flow={flow}/></div></main>}
 
