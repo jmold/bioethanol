@@ -84,7 +84,7 @@ def _ethanol_ratio(results:dict,first:dict)->float:
 
 
 def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min:int=15,horizon_h:float=168.0)->dict:
-    """V0.22.0 direct-transfer connected plant scheduler aligned to the P01-P12 reference route.
+    """V0.23.0 direct-transfer connected plant scheduler aligned to the P01-P12 reference route.
 
     No intermediate buffer vessels are assumed. Upstream vessels may only
     discharge directly into an available downstream process vessel. If the
@@ -97,7 +97,7 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
     sections=_section_specs(legacy)
     if len(sections)<3:
         out=dict(legacy)
-        out.update({"engine":"Bio-Agri direct-transfer dynamic plant engine","engine_version":"0.22.0","connected_material_transfers":False})
+        out.update({"engine":"Bio-Agri direct-transfer dynamic plant engine","engine_version":"0.23.0","connected_material_transfers":False})
         return out
 
     pt,hy,fe=sections[:3]
@@ -312,11 +312,11 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
         },
         "status":"V0.23 DIRECT VESSEL-TO-VESSEL DIGITAL TWIN",
         "notes":list(legacy.get("notes",[]))+[
-            "No intermediate buffer vessels are assumed by V0.20.",
+            "No intermediate buffer vessels are assumed by V0.23.",
             "Pretreatment transfers directly into hydrolysis vessels; hydrolysis transfers directly into fermentation vessels.",
             "Downstream vessels may accumulate partial direct fills where upstream and downstream batch sizes differ.",
             "An upstream vessel remains BLOCKED until a downstream vessel has sufficient free capacity.",
-            "Reaction chemistry and utility calculations remain based on the validated steady-state/V0.19 engineering model during this alpha.",
+            "Reaction chemistry remains steady-state while V0.23 extends the connected operational timeline for the Digital Twin and Scheduler.",
         ],
     })
     return out
