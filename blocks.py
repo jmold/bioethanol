@@ -761,8 +761,8 @@ class BeerColumnBlock(BaseBlock):
                 note="Mass split remains workbook-selected while tray/reflux feasibility and thermal traffic are independently calculated. Bottoms remain provisionally classified as wastewater."
             ),
             warnings=[
-                "P08 mass split still follows the workbook target; shortcut thermodynamics are a feasibility/design screen, not a rigorous rate-based column simulation.",
-                *(["Configured P08 tray/reflux design is below shortcut requirement."] if not shortcut.stage_feasible else [])
+                "P08 mass split still follows the workbook target. FUG is used only as a diagnostic because P08 is configured as a stripper with a vapour side draw, not a simple conventional distillate column.",
+                *(["The conventional FUG diagnostic indicates the configured P08 trays/reflux would be insufficient for an equivalent simple column; side-draw/vendor modelling is required before treating this as a design failure."] if not shortcut.stage_feasible else [])
             ]
         )
 
