@@ -567,7 +567,17 @@ function App(){
             </>:<>
               {!results?<div className="inspector-empty compact"><strong>No current results</strong><p>Run the process model to calculate this block.</p><button className="primary" onClick={runModel}>Run model</button></div>:<>
                 <div className="section-title">Latest calculation</div>
-                <div className="metric-list">{Object.entries(selectedResult?.metrics||{}).slice(0,12).map(([k,v]:any)=><div key={k}><span>{pretty(k)}</span><strong>{typeof v==='number'?fmt(v,4):String(v)}</strong></div>)}</div>
+                <div className="metric-list">{Object.entries(selectedResult?.metrics||{}).filter(([k,v]:any)=>k!=='shortcut_distillation'&&(typeof v==='number'||typeof v==='string'||typeof v==='boolean')).slice(0,12).map(([k,v]:any)=><div key={k}><span>{pretty(k)}</span><strong>{typeof v==='number'?fmt(v,4):String(v)}</strong></div>)}</div>
+                {selectedResult?.metrics?.shortcut_distillation&&<><div className="section-title">Distillation design check</div><div className="metric-list">
+                  <div><span>Relative volatility</span><strong>{fmt(selectedResult.metrics.shortcut_distillation.relative_volatility,3)}</strong></div>
+                  <div><span>Minimum stages · Fenske</span><strong>{fmt(selectedResult.metrics.shortcut_distillation.minimum_stages_fenske,2)}</strong></div>
+                  <div><span>Minimum reflux · Underwood</span><strong>{fmt(selectedResult.metrics.shortcut_distillation.minimum_reflux_underwood,2)}</strong></div>
+                  <div><span>Required stages · Gilliland</span><strong>{fmt(selectedResult.metrics.shortcut_distillation.required_theoretical_stages_gilliland,2)}</strong></div>
+                  <div><span>Installed effective stages</span><strong>{fmt(selectedResult.metrics.shortcut_distillation.installed_effective_stages,2)}</strong></div>
+                  <div><span>Stage margin</span><strong>{fmt(selectedResult.metrics.shortcut_distillation.stage_margin,2)}</strong></div>
+                  <div><span>Reflux / minimum reflux</span><strong>{fmt(selectedResult.metrics.shortcut_distillation.reflux_to_minimum_ratio,2)} ×</strong></div>
+                  <div><span>Shortcut stage check</span><strong>{selectedResult.metrics.shortcut_distillation.stage_feasible?'PASS':'CHECK'}</strong></div>
+                </div></>}
                 {!!selectedResult?.utilities&&<><div className="section-title">Utilities</div><div className="metric-list">{Object.entries(selectedResult.utilities).filter(([,v]:any)=>typeof v==='number'&&Math.abs(v)>1e-12).map(([k,v]:any)=><div key={k}><span>{pretty(k)}</span><strong>{fmt(v,3)}</strong></div>)}</div></>}
                 {selectedResult?.metadata&&<details className="advanced"><summary>Engineering basis</summary><div className="advanced-body metric-list"><div><span>Status</span><strong>{selectedResult.metadata.status}</strong></div><div><span>Confidence</span><strong>{selectedResult.metadata.confidence}</strong></div><div className="stacked"><span>Basis</span><strong>{selectedResult.metadata.basis}</strong></div></div></details>}
                 {!!selectedResult?.errors?.length&&<div className="inline-message error"><strong>Model issue</strong>{selectedResult.errors.map((x:string)=><span key={x}>{x}</span>)}</div>}
