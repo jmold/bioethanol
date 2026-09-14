@@ -1,7 +1,7 @@
-# Bio-Agri Process Simulator — V0.20.2 File I/O & Integrated Recovery
+# Bio-Agri Process Simulator — V0.21 Native Distillation Screening
 
-Application version: **0.20.2**  
-Engineering model version: **0.20.2**  
+Application version: **0.21.0**  
+Engineering model version: **0.21.0**  
 Schema version: **1.0.0**
 
 Bio-Agri is a local engineering-screening application for lignocellulosic ethanol process development. It combines a visual flowsheet, transparent equipment assumptions, validated mass-balance calculations, scenario comparison, sensitivity analysis, and plant-level utility summaries.
@@ -129,3 +129,9 @@ V0.20.1 aligns the application reference route to the master Google Sheet P01–
 V0.20.2 replaces packaged-backend persistence as the normal desktop workflow with native **Open**, **Save**, and **Save As** file dialogs. BioAgri flowsheets are saved directly to user-selected disk locations as JSON, preserving block positions, parameters and connections, and subsequent Save operations write back to the open file. Legacy backend-saved flows remain accessible for migration.
 
 Process-model changes include explicit P07 cold-side economiser energy closure (required duty, recovered duty and external trim heat) and an iteratively converged P10 molecular-sieve regeneration recycle to P09 using the workbook 72 wt% ethanol tear-stream basis. Internal recycle is excluded from external plant material closure; the workbook P11 product basis remains 643.8334866 L/h.
+
+
+## V0.21 native distillation screening
+V0.21 adds a native binary ethanol/water shortcut-distillation model for P08 and P09. The application preserves the master workbook mass-balance targets while independently calculating Fenske minimum stages, Underwood minimum reflux, Gilliland required theoretical stages, installed effective stages, stage margin, representative relative volatility and constant-molar-overflow screening reboiler/condenser duties. P08 is a stripper with a vapour side draw, so its FUG result is presented as a diagnostic rather than a definitive column design verdict; P09 is a more conventional rectification application.
+
+The representative volatility calculation uses NIST Chemistry WebBook Antoine vapour-pressure coefficients for ethanol and water. The shortcut remains an engineering screening model: it is binary, does not implement an activity-coefficient model for the ethanol/water azeotrope, and is not a substitute for vendor or rigorous rate-based column design.
