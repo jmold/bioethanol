@@ -81,7 +81,7 @@ def _ethanol_ratio(results:dict,first:dict)->float:
 
 
 def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min:int=15,horizon_h:float=168.0)->dict:
-    """V0.20.2 direct-transfer connected plant scheduler aligned to the P01-P12 reference route.
+    """V0.21.0 direct-transfer connected plant scheduler aligned to the P01-P12 reference route.
 
     No intermediate buffer vessels are assumed. Upstream vessels may only
     discharge directly into an available downstream process vessel. If the
@@ -94,7 +94,7 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
     sections=_section_specs(legacy)
     if len(sections)<3:
         out=dict(legacy)
-        out.update({"engine":"Bio-Agri direct-transfer dynamic plant engine","engine_version":"0.20.2","connected_material_transfers":False})
+        out.update({"engine":"Bio-Agri direct-transfer dynamic plant engine","engine_version":"0.21.0","connected_material_transfers":False})
         return out
 
     pt,hy,fe=sections[:3]
@@ -253,7 +253,7 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
     out=dict(legacy)
     out.update({
         "engine":"Bio-Agri direct-transfer dynamic plant engine",
-        "engine_version":"0.20.2",
+        "engine_version":"0.21.0",
         "connected_material_transfers":True,
         "intermediate_buffers_assumed":False,
         "shared_pumps":[asdict(p) for p in pumps.values()],
