@@ -87,5 +87,35 @@ class SpreadsheetAlignmentTests(unittest.TestCase):
         self.assertAlmostEqual(ethanol_lph,643.8334866,places=4)
         self.assertAlmostEqual(self.result["overall_material_closure"]["closure_error_tph"],0.0,places=8)
 
+
+    def test_p08_shortcut_distillation_is_active(self):
+        self.assertFalse(self.result["errors"],self.result["errors"])
+        p08=self.result["block_results"]["beer"]["metrics"]
+        sc=p08["shortcut_distillation"]
+        self.assertGreater(sc["relative_volatility"],1.0)
+        self.assertGreater(sc["minimum_stages_fenske"],0.0)
+        self.assertGreaterEqual(sc["minimum_reflux_underwood"],0.0)
+        self.assertGreater(sc["required_theoretical_stages_gilliland"],0.0)
+        self.assertAlmostEqual(sc["installed_effective_stages"],32*0.48,places=8)
+        self.assertGreater(p08["reboiler_kW"],0.0)
+        self.assertGreater(p08["condenser_kW"],0.0)
+
+    def test_p09_shortcut_distillation_is_active(self):
+        self.assertFalse(self.result["errors"],self.result["errors"])
+        p09=self.result["block_results"]["rect"]["metrics"]
+        sc=p09["shortcut_distillation"]
+        self.assertGreater(sc["relative_volatility"],1.0)
+        self.assertGreater(sc["minimum_stages_fenske"],0.0)
+        self.assertGreaterEqual(sc["minimum_reflux_underwood"],0.0)
+        self.assertGreater(sc["required_theoretical_stages_gilliland"],0.0)
+        self.assertAlmostEqual(sc["installed_effective_stages"],45*0.76,places=8)
+        self.assertGreater(p09["reboiler_kW"],0.0)
+        self.assertGreater(p09["condenser_kW"],0.0)
+
+    def test_distillation_shortcut_preserves_workbook_product_basis(self):
+        sieve=self.result["block_results"]["sieve"]["metrics"]
+        ethanol_lph=sieve["ethanol_product_tph"]*1000/0.78937
+        self.assertAlmostEqual(ethanol_lph,643.8334866,places=4)
+
 if __name__=="__main__":
     unittest.main()
