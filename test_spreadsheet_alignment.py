@@ -63,7 +63,7 @@ class SpreadsheetAlignmentTests(unittest.TestCase):
         self.assertEqual(recycle["destination"],"P09 Rectification")
         self.assertEqual(recycle["destination_tray_from_top"],14)
         self.assertAlmostEqual(recycle["recycle_ethanol_wt_fraction"],0.72)
-        self.assertIn("SOLVER PENDING",recycle["status"])
+        self.assertIn("CONVERGED INTERNAL RECYCLE",recycle["status"])
 
 
     def test_p09_p10_recycle_converges_and_preserves_workbook_product(self):
@@ -74,7 +74,7 @@ class SpreadsheetAlignmentTests(unittest.TestCase):
         self.assertTrue(sieve["recycle_converged"])
         self.assertGreater(rect["converged_recycle_tph"],0.0)
         self.assertAlmostEqual(sieve["calculated_recycle_ethanol_wt_fraction"],0.72,places=9)
-        ethanol_tph=self.result["terminal_component_totals"]["ethanol"]
+        ethanol_tph=sieve["ethanol_product_tph"]
         ethanol_lph=ethanol_tph*1000/0.78937
         self.assertAlmostEqual(ethanol_lph,643.8334866,places=4)
         self.assertAlmostEqual(self.result["overall_material_closure"]["closure_error_tph"],0.0,places=8)
