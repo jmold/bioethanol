@@ -1,6 +1,6 @@
 [package]
 name = "bioagri-process-simulator"
-version = "0.20.1"
+version = "0.20.2"
 description = "Bio-Agri Process Simulator"
 authors = ["BioAgri"]
 edition = "2021"
