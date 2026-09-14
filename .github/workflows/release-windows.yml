@@ -49,7 +49,7 @@ jobs:
         with:
           tagName: app-v__VERSION__
           releaseName: "BioAgri Process Simulator v__VERSION__"
-          releaseBody: "BioAgri Process Simulator V0.21 adds native P08/P09 ethanol-water shortcut distillation screening using the configured trays, tray efficiencies, reflux ratios and pressures. It reports Fenske/Underwood/Gilliland design checks and calculated thermal duties while preserving the master workbook mass-balance basis. Existing installations will be offered this signed update automatically."
+          releaseBody: "BioAgri Process Simulator V0.22 promotes the Digital Twin and Scheduler to full-page workspaces, restores progressive vessel fill/empty animation from the connected discrete-event engine, adds scheduler operability/event views, and reduces development CI noise. Existing installations will be offered this signed update automatically."
           releaseDraft: false
           prerelease: false
           args: --bundles nsis

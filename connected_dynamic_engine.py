@@ -43,8 +43,10 @@ class Vessel:
     section_type: str
     batch_capacity_t: float
     state: str="AVAILABLE"
+    state_started_h: float=0.0
     state_until_h: float=0.0
     batch_mass_t: float=0.0
+    transfer_base_mass_t: float=0.0
     source_feed_equivalent_t: float=0.0
     pending_action: str|None=None
     transfer_source_id: str|None=None
@@ -81,7 +83,7 @@ def _ethanol_ratio(results:dict,first:dict)->float:
 
 
 def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min:int=15,horizon_h:float=168.0)->dict:
-    """V0.21.0 direct-transfer connected plant scheduler aligned to the P01-P12 reference route.
+    """V0.22.0 direct-transfer connected plant scheduler aligned to the P01-P12 reference route.
 
     No intermediate buffer vessels are assumed. Upstream vessels may only
     discharge directly into an available downstream process vessel. If the
@@ -94,7 +96,7 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
     sections=_section_specs(legacy)
     if len(sections)<3:
         out=dict(legacy)
-        out.update({"engine":"Bio-Agri direct-transfer dynamic plant engine","engine_version":"0.21.0","connected_material_transfers":False})
+        out.update({"engine":"Bio-Agri direct-transfer dynamic plant engine","engine_version":"0.22.0","connected_material_transfers":False})
         return out
 
     pt,hy,fe=sections[:3]
@@ -116,7 +118,10 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
     starvation_events=0;blocking_events=0
 
     def set_state(v,state,now,dur=0.0,action=None):
-        v.state=state;v.state_until_h=now+max(0.0,dur);v.pending_action=action
+        v.state=state
+        v.state_started_h=now
+        v.state_until_h=now+max(0.0,dur)
+        v.pending_action=action
 
     def process_state(v):
         return {"pretreatment":"HEATING_PRETREATMENT","hydrolysis":"ENZYMATIC_HYDROLYSIS","fermentation":"FERMENTATION"}[v.section_type]
@@ -164,7 +169,9 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
             pump.contention_count+=1;return False
         dur=_f(schedule_by_type[v.section_type].get("fill_time_h"))
         pump.reserve(now,dur,v.vessel_id)
-        v.batch_mass_t=v.batch_capacity_t;v.source_feed_equivalent_t=v.batch_capacity_t
+        v.batch_mass_t=v.batch_capacity_t
+        v.transfer_base_mass_t=0.0
+        v.source_feed_equivalent_t=v.batch_capacity_t
         source_feed_started += v.batch_capacity_t
         set_state(v,"FILLING",now,dur,"SOURCE_FILL_COMPLETE")
         events.append({"time_h":now,"event":"SOURCE_FILL_START","vessel":v.vessel_id,"mass_t":v.batch_capacity_t})
@@ -212,9 +219,23 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
         outp.reserve(now,dur,src.vessel_id);inp.reserve(now,dur,dest.vessel_id)
         set_state(src,"EMPTYING",now,dur,"TRANSFER_SOURCE_WAIT")
         dest.transfer_source_id=src.vessel_id
+        dest.transfer_base_mass_t=dest.batch_mass_t
         set_state(dest,"FILLING",now,dur,"TRANSFER_COMPLETE")
         events.append({"time_h":now,"event":"DIRECT_TRANSFER_START","from":src.vessel_id,"to":dest.vessel_id,"mass_t":mass})
         return True
+
+    def display_inventory(v,now):
+        dur=max(v.state_until_h-v.state_started_h,0.0)
+        progress=1.0 if dur<=1e-12 else min(max((now-v.state_started_h)/dur,0.0),1.0)
+        if v.state=="FILLING" and v.pending_action=="SOURCE_FILL_COMPLETE":
+            return v.batch_capacity_t*progress
+        if v.state=="FILLING" and v.pending_action=="TRANSFER_COMPLETE":
+            src=next((x for x in vessels if x.vessel_id==v.transfer_source_id),None)
+            incoming=(src.batch_mass_t if src else 0.0)*progress
+            return min(v.batch_capacity_t,v.transfer_base_mass_t+incoming)
+        if v.state=="EMPTYING" and v.pending_action in {"TRANSFER_SOURCE_WAIT","FINAL_EMPTY_COMPLETE"}:
+            return max(0.0,v.batch_mass_t*(1.0-progress))
+        return v.batch_mass_t
 
     t=0.0
     while t<horizon-1e-9:
@@ -235,8 +256,8 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
         timeline.append({
             "time_h":round(t,6),
             "states":{sec["block_id"]:[v.state for v in vessels if v.section_id==sec["block_id"]] for sec in sections[:3]},
-            "vessel_inventory_t":{v.vessel_id:v.batch_mass_t for v in vessels},
-            "vessel_fill_fraction":{v.vessel_id:(v.batch_mass_t/v.batch_capacity_t if v.batch_capacity_t>0 else 0.0) for v in vessels},
+            "vessel_inventory_t":{v.vessel_id:display_inventory(v,t) for v in vessels},
+            "vessel_fill_fraction":{v.vessel_id:(display_inventory(v,t)/v.batch_capacity_t if v.batch_capacity_t>0 else 0.0) for v in vessels},
             "pump_owner":{pid:(p.owner if not p.available(t) else None) for pid,p in pumps.items()},
             "completed_source_feed_t":completed_source_feed,
         })
@@ -253,7 +274,7 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
     out=dict(legacy)
     out.update({
         "engine":"Bio-Agri direct-transfer dynamic plant engine",
-        "engine_version":"0.21.0",
+        "engine_version":"0.22.0",
         "connected_material_transfers":True,
         "intermediate_buffers_assumed":False,
         "shared_pumps":[asdict(p) for p in pumps.values()],

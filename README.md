@@ -1,7 +1,7 @@
-# Bio-Agri Process Simulator — V0.21 Native Distillation Screening
+# Bio-Agri Process Simulator — V0.22 Digital Twin & Scheduler
 
-Application version: **0.21.0**  
-Engineering model version: **0.21.0**  
+Application version: **0.22.0**  
+Engineering model version: **0.22.0**  
 Schema version: **1.0.0**
 
 Bio-Agri is a local engineering-screening application for lignocellulosic ethanol process development. It combines a visual flowsheet, transparent equipment assumptions, validated mass-balance calculations, scenario comparison, sensitivity analysis, and plant-level utility summaries.
@@ -135,3 +135,11 @@ Process-model changes include explicit P07 cold-side economiser energy closure (
 V0.21 adds a native binary ethanol/water shortcut-distillation model for P08 and P09. The application preserves the master workbook mass-balance targets while independently calculating Fenske minimum stages, Underwood minimum reflux, Gilliland required theoretical stages, installed effective stages, stage margin, representative relative volatility and constant-molar-overflow screening reboiler/condenser duties. P08 is a stripper with a vapour side draw, so its FUG result is presented as a diagnostic rather than a definitive column design verdict; P09 is a more conventional rectification application.
 
 The representative volatility calculation uses NIST Chemistry WebBook Antoine vapour-pressure coefficients for ethanol and water. The shortcut remains an engineering screening model: it is binary, does not implement an activity-coefficient model for the ethanol/water azeotrope, and is not a substitute for vendor or rigorous rate-based column design.
+
+
+## V0.22 Digital Twin and Scheduler
+V0.22 promotes the Digital Twin and production Scheduler to full-page primary workspaces rather than result-sheet tabs. The Digital Twin retains the P01-P12 plant replay while the Scheduler exposes batch capacity, phase timing, transfer pumps, operability events and utility demand in a dedicated workspace.
+
+The connected discrete-event engine now interpolates vessel inventory through transfer duration, so FILLING and EMPTYING states visibly change vessel level instead of jumping at transfer completion. No intermediate buffer vessels are introduced; P02 to P04 to P05 transfers remain direct vessel-to-vessel.
+
+Repository validation no longer runs on every development-branch push; it runs on pull requests to main or manually, reducing CI notification noise while retaining merge gates.
