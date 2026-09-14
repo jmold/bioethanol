@@ -66,6 +66,14 @@ class SpreadsheetAlignmentTests(unittest.TestCase):
         self.assertIn("CONVERGED INTERNAL RECYCLE",recycle["status"])
 
 
+
+    def test_p07_economiser_closes_workbook_cold_side_duty(self):
+        p07=self.result["block_results"]["beer_cond"]["metrics"]
+        self.assertAlmostEqual(p07["required_preheat_kW"],774.1690284,places=5)
+        self.assertAlmostEqual(p07["economiser_recovery_kW"],774.1690284,places=5)
+        self.assertAlmostEqual(p07["external_trim_heat_kW"],0.0,places=8)
+        self.assertAlmostEqual(p07["economiser_recovery_fraction"],1.0,places=8)
+
     def test_p09_p10_recycle_converges_and_preserves_workbook_product(self):
         self.assertFalse(self.result["errors"],self.result["errors"])
         rect=self.result["block_results"]["rect"]["metrics"]
