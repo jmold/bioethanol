@@ -865,15 +865,31 @@ class MolecularSieveBlock(BaseBlock):
 
         p = self.params
         product_wt = p.get("product_ethanol_wt_fraction",0.995)
+        recycle_wt = p.get("regeneration_recycle_ethanol_wt_fraction")
         product_recovery = p.get("ethanol_product_recovery_fraction",1.0)
-        product_etoh=etoh*product_recovery
-        recycle_etoh=etoh-product_etoh
 
-        product_total = product_etoh/product_wt
-        product_water = product_total-product_etoh
-        if product_water > s.get("water"):
-            return BlockResult({}, errors=["Feed does not contain sufficient water for target product definition."])
-        recycle_water = s.get("water")-product_water
+        if recycle_wt is not None:
+            recycle_wt=float(recycle_wt)
+            if not (0.0 <= recycle_wt < product_wt <= 1.0):
+                return BlockResult({}, errors=["Molecular-sieve product/recycle ethanol fractions are invalid."])
+            total=s.total_tph
+            product_total=(etoh-recycle_wt*total)/(product_wt-recycle_wt)
+            if product_total < -1e-9 or product_total > total+1e-9:
+                return BlockResult({}, errors=["Molecular-sieve product and recycle compositions cannot close on the current feed."])
+            product_total=max(0.0,min(total,product_total))
+            recycle_total=total-product_total
+            product_etoh=product_total*product_wt
+            recycle_etoh=recycle_total*recycle_wt
+            product_water=product_total-product_etoh
+            recycle_water=recycle_total-recycle_etoh
+        else:
+            product_etoh=etoh*product_recovery
+            recycle_etoh=etoh-product_etoh
+            product_total = product_etoh/product_wt
+            product_water = product_total-product_etoh
+            if product_water > s.get("water"):
+                return BlockResult({}, errors=["Feed does not contain sufficient water for target product definition."])
+            recycle_water = s.get("water")-product_water
 
         product = Stream(
             f"{self.id}:product",
@@ -902,6 +918,7 @@ class MolecularSieveBlock(BaseBlock):
                 "minimum_adsorption_beds":p.get("minimum_adsorption_beds",2),
                 "feed_temperature_C":p.get("feed_temperature_C",120.0),
                 "specified_recycle_ethanol_wt_fraction":p.get("regeneration_recycle_ethanol_wt_fraction",0.72),
+                "calculated_recycle_ethanol_wt_fraction":(recycle_etoh/recycle.total_tph if recycle.total_tph else 0.0),
                 "specified_recycle_destination":p.get("regeneration_recycle_destination","P09 Rectification, tray 14"),
                 "closure_error_tph":_closure_error(inputs,outputs)
             },
