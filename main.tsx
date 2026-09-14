@@ -144,10 +144,10 @@ function DigitalTwin({dynamic,results}:any){
       <div className="dashboard-card"><span>Residue solids</span><strong>Separation cake</strong></div>
       <div className="dashboard-card"><span>Beer bottoms</span><strong>Wastewater stream</strong></div>
       <div className="dashboard-card"><span>Rectifier bottoms</span><strong>Wastewater stream</strong></div>
-      <div className="dashboard-card"><span>P10 sieve recycle</span><strong>72 wt% EtOH → P09 tray 14 (specified tear stream)</strong></div>
+      <div className="dashboard-card"><span>P10 sieve recycle</span><strong>72 wt% EtOH → P09 tray 14 · converged recycle</strong></div>
     </div>
     <div className="twin-readouts"><div><span>Completed feed</span><strong>{fmt(throughput.average_completed_feed_tph,2)} t/h</strong></div><div><span>Annual ethanol</span><strong>{fmt((throughput.ethanol_product_L_per_8000h_year||0)/1e6,2)} ML/y</strong></div><div><span>Blocked events</span><strong>{op.blocking_events||0}</strong></div><div><span>Pump contention</span><strong>{op.pump_contention_events||0}</strong></div></div>
-    <p className="model-boundary"><strong>V0.20.1 spreadsheet-aligned boundary:</strong> the application follows the master P01–P12 process sequence. P03 heat recovery is explicit after P02 and returns recovered sensible heat energetically to the incoming cold slurry; P07 represents beer-column-bottoms economising. P10 recycle is specified back to P09 tray 14 as a tear stream until iterative recycle convergence is implemented. P02/P04/P05 batch states are event-resolved; P06–P10 remain continuous engineering-screening calculations.</p>
+    <p className="model-boundary"><strong>V0.20.1 spreadsheet-aligned boundary:</strong> the application follows the master P01–P12 process sequence. P03 heat recovery is explicit after P02 and returns recovered sensible heat energetically to the incoming cold slurry; P07 represents beer-column-bottoms economising. P10 regeneration recycle is iteratively converged back to P09 on the workbook 72 wt% tear-stream basis. P02/P04/P05 batch states are event-resolved; P06–P10 remain continuous engineering-screening calculations.</p>
   </div>
 }
 
