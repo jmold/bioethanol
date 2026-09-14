@@ -494,12 +494,6 @@ class FermentationBlock(BaseBlock):
                 "fermentation_cooling_kW":cooling_kW,
                 "fermentation_heat_release_kJ_per_mol_glucose":heat_release_kJ_per_mol_glucose,
                 "fermentation_heat_release_kJ_per_kg_glucose":heat_release_kJ_per_kg_glucose,
-                "actual_trays":p.get("actual_trays"),
-                "overall_tray_efficiency_fraction":p.get("overall_tray_efficiency_fraction"),
-                "feed_tray_from_top":p.get("feed_tray_from_top"),
-                "vapour_side_draw_tray_from_top":p.get("vapour_side_draw_tray_from_top"),
-                "molar_reflux_ratio":p.get("molar_reflux_ratio"),
-                "overhead_pressure_atm_abs":p.get("overhead_pressure_atm_abs"),
                 "closure_error_tph":_closure_error(inputs,outputs)
             },
             utilities=UtilityDemand(
@@ -716,6 +710,13 @@ class BeerColumnBlock(BaseBlock):
                 "feed_preheat_kW":external_preheat_kW,
                 "reboiler_kW":reboiler_kW,
                 "condenser_kW":condenser_kW,
+                "actual_trays":p.get("actual_trays"),
+                "overall_tray_efficiency_fraction":p.get("overall_tray_efficiency_fraction"),
+                "feed_tray_from_top":p.get("feed_tray_from_top"),
+                "vapour_side_draw_tray_from_top":p.get("vapour_side_draw_tray_from_top"),
+                "molar_reflux_ratio":p.get("molar_reflux_ratio"),
+                "overhead_pressure_atm_abs":p.get("overhead_pressure_atm_abs"),
+                "reboiler_type":p.get("reboiler_type"),
                 "closure_error_tph":_closure_error(inputs,outputs)
             },
             utilities=UtilityDemand(
