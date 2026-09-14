@@ -72,5 +72,21 @@ class ConnectedDynamicEngineTests(unittest.TestCase):
                 self.assertLessEqual(mass,caps[vid]+1e-9)
 
 
+
+    def test_fill_levels_animate_during_transfer_states(self):
+        filling_levels=[]
+        emptying_levels=[]
+        for row in self.connected["timeline"]:
+            for vid,level in row["vessel_fill_fraction"].items():
+                states=row["states"].get(vid.split("-V")[0],[])
+                index=int(vid.split("-V")[1])-1 if "-V" in vid else -1
+                state=states[index] if 0 <= index < len(states) else ""
+                if state=="FILLING" and 0.0 < level < 1.0:
+                    filling_levels.append(level)
+                if state=="EMPTYING" and 0.0 < level < 1.0:
+                    emptying_levels.append(level)
+        self.assertTrue(filling_levels,"Expected at least one partially filled vessel while FILLING.")
+        self.assertTrue(emptying_levels,"Expected at least one partially emptied vessel while EMPTYING.")
+
 if __name__=="__main__":
     unittest.main()
