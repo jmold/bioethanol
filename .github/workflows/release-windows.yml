@@ -36,9 +36,9 @@ jobs:
 
       - name: Build bundled calculation engine
         run: |
-          pyinstaller --clean --noconfirm bioagri-backend.spec
+          pyinstaller --clean --noconfirm --distpath backend-dist bioagri-backend.spec
           New-Item -ItemType Directory -Force desktop/backend | Out-Null
-          Copy-Item dist/bioagri-backend.exe desktop/backend/bioagri-backend.exe -Force
+          Copy-Item backend-dist/bioagri-backend.exe desktop/backend/bioagri-backend.exe -Force
 
       - name: Smoke test bundled calculation engine
         shell: pwsh
@@ -46,7 +46,7 @@ jobs:
           $ErrorActionPreference = "Stop"
           $stdout = Join-Path $env:RUNNER_TEMP "backend-smoke-stdout.log"
           $stderr = Join-Path $env:RUNNER_TEMP "backend-smoke-stderr.log"
-          $p = Start-Process -FilePath ".\dist\bioagri-backend.exe" -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          $p = Start-Process -FilePath ".\backend-dist\bioagri-backend.exe" -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
           try {
             $ok = $false
             for ($i=0; $i -lt 30; $i++) {
