@@ -1028,36 +1028,22 @@ def _closure_error(inputs, outputs):
     return sum(s.total_tph for s in inputs.values()) - sum(s.total_tph for s in outputs.values())
 
 class PumpBlock(BaseBlock):
-    type_name = "pump"
-    display_name = "Pump"
-    input_ports = {"feed": PortSpec("feed","in",description="Liquid/slurry feed")}
-    output_ports = {"outlet": PortSpec("outlet","out",description="Pressurised outlet")}
-
-    def calculate(self, inputs):
+    type_name="pump"; display_name="Transfer Pump"
+    input_ports={"feed":PortSpec("feed","in",description="Liquid/slurry feed")};output_ports={"outlet":PortSpec("outlet","out",description="Pressurised outlet")}
+    default_params={"delta_p_bar":2.0,"efficiency_fraction":0.70,"density_kg_per_m3":1000.0,"manual_electrical_load_kW":0.0,"electrical_load_factor_fraction":1.0,"annual_operating_hours":8000.0}
+    def calculate(self,inputs):
         errors=self.validate_inputs(inputs)
-        if errors: return BlockResult({},errors=errors)
-        s=inputs["feed"]
-        p=self.params
-        dp_bar=p.get("delta_p_bar",2.0)
-        efficiency=p.get("efficiency_fraction",0.70)
-        density=p.get("density_kg_per_m3",1000.0)
-        if efficiency<=0 or density<=0 or dp_bar<0:
-            return BlockResult({},errors=["Pump efficiency/density must be positive and delta P non-negative."])
-        m_kg_s=s.total_tph*1000/3600
-        q_m3_s=m_kg_s/density
-        hydraulic_kW=dp_bar*1e5*q_m3_s/1000
-        elec=hydraulic_kW/efficiency
-        out=s.copy(new_id=f"{self.id}:outlet")
-        out.pressure_bar_abs=(s.pressure_bar_abs or 1.0)+dp_bar
-        out.note="Pump outlet"
-        return BlockResult(
-            {"outlet":out},
-            metrics={"delta_p_bar":dp_bar,"hydraulic_power_kW":hydraulic_kW,"electrical_power_kW":elec,
-                     "closure_error_tph":_closure_error(inputs,{"outlet":out})},
-            utilities=UtilityDemand(electricity_kW=elec),
-            equipment=[EquipmentRequirement(equipment_type="Pump",design_flow_tph=s.total_tph,motor_kW=elec)],
-            metadata=EngineeringMetadata(status="PROVISIONAL ENGINEERING ASSUMPTION",basis="Hydraulic screening",confidence="MEDIUM")
-        )
+        if errors:return BlockResult({},errors=errors)
+        x=inputs["feed"];p={**self.default_params,**self.params};dp=p["delta_p_bar"];eff=p["efficiency_fraction"];density=p["density_kg_per_m3"]
+        if eff<=0 or eff>1 or density<=0 or dp<0:return BlockResult({},errors=["Pump efficiency must be 0..1, density positive and differential pressure non-negative."])
+        q=x.total_tph*1000/3600/density; hydraulic=dp*1e5*q/1000; calc=hydraulic/eff
+        manual=max(0,p["manual_electrical_load_kW"]);base=manual if manual>0 else calc;elec=base*max(0,p["electrical_load_factor_fraction"])
+        out=x.copy(new_id=f"{self.id}:outlet");out.pressure_bar_abs=(x.pressure_bar_abs or 1)+dp;out.note="Transfer pump outlet"
+        return BlockResult({"outlet":out},metrics={"pump_differential_pressure_bar":dp,"pump_efficiency_fraction":eff,"hydraulic_power_kW":hydraulic,
+            "calculated_electrical_power_kW":calc,"applied_electrical_power_kW":elec,"annual_electricity_kWh":elec*p["annual_operating_hours"],"closure_error_tph":_closure_error(inputs,{"outlet":out})},
+            utilities=UtilityDemand(electricity_kW=elec,peak_electricity_kW=base),equipment=[EquipmentRequirement(equipment_type="Transfer pump",design_flow_tph=x.total_tph,motor_kW=base)],
+            metadata=EngineeringMetadata(status="CALCULATED",basis="Hydraulic power from flow and differential pressure divided by pump efficiency",confidence="MEDIUM",note="Manual electrical load overrides calculated load when non-zero."))
+
 
 class HeaterCoolerBlock(BaseBlock):
     type_name = "heater_cooler"
