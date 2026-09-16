@@ -3,7 +3,10 @@ from __future__ import annotations
 import math
 from typing import Dict, Type
 from models import Stream, PortSpec, BlockResult, UtilityDemand, Discharge, EquipmentRequirement, EngineeringMetadata
-from distillation_shortcut import shortcut_column
+try:
+    from distillation_shortcut import shortcut_column
+except ModuleNotFoundError:
+    shortcut_column = None
 
 class BaseBlock:
     type_name = "base"
