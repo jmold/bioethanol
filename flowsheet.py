@@ -201,6 +201,17 @@ class Flowsheet:
             block = cls(bid,bdef.params)
             self.instances[bid] = block
             result = block.calculate(incoming_by_block[bid])
+            # Optional auxiliary electrical load is available on every equipment object.
+            if "annual_electricity_kWh" not in result.metrics:
+                manual=max(0.0,float(bdef.params.get("manual_electrical_load_kW",0.0) or 0.0))
+                load_factor=max(0.0,float(bdef.params.get("electrical_load_factor_fraction",1.0) or 0.0))
+                hours=max(0.0,float(bdef.params.get("annual_operating_hours",8000.0) or 0.0))
+                if manual>0:
+                    applied=manual*load_factor
+                    result.utilities.electricity_kW += applied
+                    result.utilities.peak_electricity_kW += manual
+                    result.metrics["manual_auxiliary_electrical_load_kW"]=applied
+                    result.metrics["annual_electricity_kWh"]=applied*hours
             self.results[bid] = result
             self.warnings.extend([f"{bid}: {w}" for w in result.warnings])
             self.errors.extend([f"{bid}: {e}" for e in result.errors])
