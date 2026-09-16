@@ -9,7 +9,7 @@ a = Analysis(
         ("flowsheet_reference.json", "."),
         ("flowsheet_alt_separation_before_fermentation.json", "."),
     ],
-    hiddenimports=["blocks", "models", "flowsheet", "api", "api_v020", "distillation_shortcut", "native_dynamic_engine", "connected_dynamic_engine", "scenarios", "uvicorn.logging", "uvicorn.loops.auto", "uvicorn.protocols.http.auto", "uvicorn.protocols.websockets.auto", "uvicorn.lifespan.on"],
+    hiddenimports=["blocks", "models", "flowsheet", "api", "api_v020", "distillation_shortcut", "native_dynamic_engine", "connected_dynamic_engine", "scenario_engine", "uvicorn.logging", "uvicorn.loops.auto", "uvicorn.protocols.http.auto", "uvicorn.protocols.websockets.auto", "uvicorn.lifespan.on"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

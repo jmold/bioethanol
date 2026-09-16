@@ -56,41 +56,56 @@ class RawFeedBlock(BaseBlock):
 
 class FeedPreparationBlock(BaseBlock):
     type_name="feed_preparation"; display_name="Feed Preparation / Slurry Make-up"
-    input_ports={"raw_feed":PortSpec("raw_feed","in",description="As-received Miscanthus feed"),
+    input_ports={"raw_feed":PortSpec("raw_feed","in",required=False,description="As-received Miscanthus feed"),
                  "process_water":PortSpec("process_water","in",required=False,description="Optional water connection; required flow is calculated")}
-    output_ports={"slurry":PortSpec("slurry","out",description="Prepared Miscanthus slurry")}
+    output_ports={"slurry":PortSpec("slurry","out",description="Prepared Miscanthus slurry"),
+                  "rejects":PortSpec("rejects","out",required=False,description="Legacy maceration/grit rejects")}
     default_params={"target_slurry_dry_matter_fraction":0.20,"process_water_temperature_C":15.0,"slurry_density_kg_per_m3":1000.0,
                     "manual_electrical_load_kW":0.0,"electrical_load_factor_fraction":1.0,"annual_operating_hours":8000.0}
     def calculate(self,inputs):
         errors=self.validate_inputs(inputs)
         if errors:return BlockResult({},errors=errors)
-        p={**self.default_params,**self.params}; feed=inputs["raw_feed"]; target=p["target_slurry_dry_matter_fraction"]
+        p={**self.default_params,**self.params}; feed=inputs.get("raw_feed"); target=p["target_slurry_dry_matter_fraction"]
+        legacy = feed is None
+        if legacy:
+            dry=p.get("dry_miscanthus_tph",3.0); moisture=p.get("incoming_moisture_wet_fraction",0.15)
+            composition=p.get("dry_feed_composition",{"glucan":0.4287,"xylan":0.2202,"lignin":0.1967,"ash":0.0233,"other_organics":0.1311})
+            total=dry/(1-moisture)
+            feed=Stream(f"{self.id}:raw_feed",{"water":total-dry,**{k:dry*v for k,v in composition.items()}},temperature_C=p["process_water_temperature_C"])
         if not 0<target<1:return BlockResult({},errors=["Target slurry dry matter must be between 0 and 1."])
         dry=sum(v for k,v in feed.components_tph.items() if k!="water"); add=max(0.0,dry/target-feed.total_tph)
         wt=inputs.get("process_water"); water_T=wt.temperature_C if wt and wt.temperature_C is not None else p["process_water_temperature_C"]
         comp=dict(feed.components_tph); comp["water"]=feed.get("water")+add; total=sum(comp.values())
         mix_T=(feed.total_tph*(feed.temperature_C or water_T)+add*water_T)/total if total else water_T
-        out=Stream(f"{self.id}:slurry",comp,temperature_C=mix_T,density_kg_per_m3=p["slurry_density_kg_per_m3"],note="Miscanthus slurry at calculated water addition")
+        reject_fraction=p.get("maceration_grit_reject_fraction",0.005) if legacy else 0.0
+        rejected={k:v*reject_fraction for k,v in comp.items()}; retained={k:v-rejected[k] for k,v in comp.items()}
+        out=Stream(f"{self.id}:slurry",retained,temperature_C=mix_T,density_kg_per_m3=p["slurry_density_kg_per_m3"],note="Miscanthus slurry at calculated water addition")
+        rejects=Stream(f"{self.id}:rejects",rejected,temperature_C=mix_T,phase="solid",note="Maceration/grit reject")
         manual=max(0.0,p["manual_electrical_load_kW"]); elec=manual*max(0.0,p["electrical_load_factor_fraction"])
         warnings=[]
         if wt and abs(wt.get("water")-add)>1e-6:warnings.append(f"Connected water is {wt.get('water'):.4f} t/h; calculated requirement {add:.4f} t/h is used.")
-        return BlockResult({"slurry":out},metrics={"as_received_feed_tph":feed.total_tph,"incoming_dry_matter_tph":dry,"required_process_water_tph":add,
-            "slurry_tph":out.total_tph,"actual_slurry_dry_matter_fraction":dry/out.total_tph if out.total_tph else 0,
-            "annual_electricity_kWh":elec*p["annual_operating_hours"],"closure_error_tph":feed.total_tph+add-out.total_tph},
+        return BlockResult({"slurry":out,"rejects":rejects},metrics={"as_received_feed_tph":feed.total_tph,"incoming_feed_water_tph":feed.get("water"),"incoming_dry_matter_tph":dry,"process_water_addition_tph":add,"required_process_water_tph":add,
+            "reject_total_tph":rejects.total_tph,"slurry_tph":out.total_tph,"actual_slurry_dry_matter_fraction":sum(v for k,v in retained.items() if k!="water")/out.total_tph if out.total_tph else 0,
+            "annual_electricity_kWh":elec*p["annual_operating_hours"],"closure_error_tph":feed.total_tph+add-out.total_tph-rejects.total_tph},
             utilities=UtilityDemand(electricity_kW=elec,peak_electricity_kW=manual,process_water_tph=add),
             equipment=[EquipmentRequirement(equipment_type="Feed preparation / slurry make-up",design_flow_tph=out.total_tph,motor_kW=manual)],
             metadata=EngineeringMetadata(status="CALCULATED",basis="Raw-feed DM plus selected slurry DM target",confidence="HIGH",note="Water is calculated automatically; maceration is separate."),warnings=warnings)
 
 class MacerationBlock(BaseBlock):
     type_name="maceration"; display_name="Maceration / Size Reduction"
-    input_ports={"feed":PortSpec("feed","in")}; output_ports={"outlet":PortSpec("outlet","out")}
-    default_params={"specific_energy_kWh_per_t_feed":12.0,"manual_electrical_load_kW":0.0,"electrical_load_factor_fraction":1.0,"annual_operating_hours":8000.0}
+    input_ports={"feed":PortSpec("feed","in")}; output_ports={"outlet":PortSpec("outlet","out"),"rejects":PortSpec("rejects","out")}
+    default_params={"grit_reject_fraction":0.005,"specific_energy_kWh_per_t_feed":12.0,"manual_electrical_load_kW":0.0,"electrical_load_factor_fraction":1.0,"annual_operating_hours":8000.0}
     def calculate(self,inputs):
         errors=self.validate_inputs(inputs)
         if errors:return BlockResult({},errors=errors)
         x=inputs["feed"];p={**self.default_params,**self.params}; calc=x.total_tph*max(0,p["specific_energy_kWh_per_t_feed"]); manual=max(0,p["manual_electrical_load_kW"])
-        base=manual if manual>0 else calc; elec=base*max(0,p["electrical_load_factor_fraction"]); out=x.copy(new_id=f"{self.id}:outlet");out.note="Macerated material"
-        return BlockResult({"outlet":out},metrics={"calculated_electrical_load_kW":calc,"applied_electrical_load_kW":elec,"annual_electricity_kWh":elec*p["annual_operating_hours"]},
+        base=manual if manual>0 else calc; elec=base*max(0,p["electrical_load_factor_fraction"])
+        reject_fraction=p["grit_reject_fraction"]
+        if not 0<=reject_fraction<1:return BlockResult({},errors=["Grit reject fraction must be between 0 and 1."])
+        rejected={k:v*reject_fraction for k,v in x.components_tph.items()}; retained={k:v-rejected[k] for k,v in x.components_tph.items()}
+        out=Stream(f"{self.id}:outlet",retained,temperature_C=x.temperature_C,pressure_bar_abs=x.pressure_bar_abs,density_kg_per_m3=x.density_kg_per_m3,note="Macerated material")
+        rejects=Stream(f"{self.id}:rejects",rejected,temperature_C=x.temperature_C,pressure_bar_abs=x.pressure_bar_abs,phase="solid",note="Maceration/grit reject")
+        return BlockResult({"outlet":out,"rejects":rejects},metrics={"reject_total_tph":rejects.total_tph,"calculated_electrical_load_kW":calc,"applied_electrical_load_kW":elec,"annual_electricity_kWh":elec*p["annual_operating_hours"]},
             utilities=UtilityDemand(electricity_kW=elec,peak_electricity_kW=base),equipment=[EquipmentRequirement(equipment_type="Macerator",design_flow_tph=x.total_tph,motor_kW=base)],
             metadata=EngineeringMetadata(status="PROVISIONAL ENGINEERING ASSUMPTION",basis="Specific energy or manual vendor load",confidence="MEDIUM"))
 
@@ -1692,7 +1707,9 @@ class DistillationUtilityEnvelopeBlock(BaseBlock):
 
 BLOCK_REGISTRY: Dict[str, Type[BaseBlock]] = {
     WaterSupplyBlock.type_name: WaterSupplyBlock,
-    FeedPreparationBlock.type_name: FeedPreparationBlock,\n    MacerationBlock.type_name: MacerationBlock,
+    RawFeedBlock.type_name: RawFeedBlock,
+    FeedPreparationBlock.type_name: FeedPreparationBlock,
+    MacerationBlock.type_name: MacerationBlock,
     PretreatmentBlock.type_name: PretreatmentBlock,
     HydrolysisBlock.type_name: HydrolysisBlock,
     FermentationBlock.type_name: FermentationBlock,
@@ -1703,7 +1720,8 @@ BLOCK_REGISTRY: Dict[str, Type[BaseBlock]] = {
     MixerBlock.type_name: MixerBlock,
     SplitterBlock.type_name: SplitterBlock,
     TankBlock.type_name: TankBlock,
-    HeatExchangerBlock.type_name: HeatExchangerBlock,\n    HeatGeneratorBlock.type_name: HeatGeneratorBlock,
+    HeatExchangerBlock.type_name: HeatExchangerBlock,
+    HeatGeneratorBlock.type_name: HeatGeneratorBlock,
     PumpBlock.type_name: PumpBlock,
     HeaterCoolerBlock.type_name: HeaterCoolerBlock,
     ProductSinkBlock.type_name: ProductSinkBlock,

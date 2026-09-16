@@ -308,9 +308,10 @@ class Flowsheet:
         for bid,res in self.results.items():
             if self.blocks[bid].type != "feed_preparation":
                 continue
-            source_total += res.metrics.get("as_received_feed_tph", 0.0)
+            if not any(c.to_block == bid and c.to_port == "raw_feed" for c in self.connections):
+                source_total += res.metrics.get("as_received_feed_tph", 0.0)
             if not any(c.to_block == bid and c.to_port == "process_water" for c in self.connections):
-                source_total += res.metrics.get("process_water_addition_tph", 0.0)
+                source_total += res.metrics.get("process_water_addition_tph", res.metrics.get("required_process_water_tph", 0.0))
         terminal_total=sum(s.total_tph for s in self._terminal_stream_objects().values())
         error=source_total-terminal_total
         return {
@@ -325,9 +326,10 @@ class Flowsheet:
         for bid,res in self.results.items():
             if self.blocks[bid].type != "feed_preparation":
                 continue
-            source_water += res.metrics.get("incoming_feed_water_tph", 0.0)
+            if not any(c.to_block == bid and c.to_port == "raw_feed" for c in self.connections):
+                source_water += res.metrics.get("incoming_feed_water_tph", 0.0)
             if not any(c.to_block == bid and c.to_port == "process_water" for c in self.connections):
-                source_water += res.metrics.get("process_water_addition_tph", 0.0)
+                source_water += res.metrics.get("process_water_addition_tph", res.metrics.get("required_process_water_tph", 0.0))
         terminal_water=sum(s.get("water") for s in self._terminal_stream_objects().values())
         reaction_consumption=0.0
         for res in self.results.values():
@@ -516,9 +518,9 @@ class Flowsheet:
         sensible_hf_cooling=271.9335
         fermentation_rxn_cooling=metric("ferm","fermentation_cooling_kW")
         return {
-            "P01_slurry_to_pretreatment_tph": self.results["feed"].outputs["slurry"].total_tph,
+            "P01_slurry_to_pretreatment_tph": (self.results["macerator"].outputs["outlet"].total_tph if "macerator" in self.results else self.results["feed"].outputs["slurry"].total_tph if "feed" in self.results else 0.0),
             "P01_water_added_tph": metric("feed","process_water_addition_tph"),
-            "P01_reject_total_tph": metric("feed","reject_total_tph"),
+            "P01_reject_total_tph": metric("macerator","reject_total_tph",metric("feed","reject_total_tph")),
             "P02_cycle_h": metric("pretreat","cycle_time_h"),
             "P02_required_volume_m3": metric("pretreat","required_total_working_volume_m3"),
             "P04_glucose_tph": metric("hydro","glucose_produced_tph"),

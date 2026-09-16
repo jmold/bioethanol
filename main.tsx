@@ -22,8 +22,8 @@ type Flowsheet={name:string,blocks:BlockDef[],connections:Connection[]}
 const fallbackBlockLibrary=[
   ['raw_feed','Raw Miscanthus Feed',[],['feed'],{as_received_feed_tph:3.5294,dry_matter_fraction:.85,temperature_C:15}],
   ['water_supply','Process Water Supply',[],['water'],{flow_tph:11.4705882353,temperature_C:15,pressure_bar_abs:2,density_kg_per_m3:999}],
-  ['feed_preparation','Feed Preparation / Slurry Make-up',['raw_feed','process_water'],['slurry'],{target_slurry_dry_matter_fraction:.20}],
-  ['maceration','Maceration / Size Reduction',['feed'],['outlet'],{specific_energy_kWh_per_t_feed:12,manual_electrical_load_kW:0,electrical_load_factor_fraction:1,annual_operating_hours:8000}],
+  ['feed_preparation','Feed Preparation / Slurry Make-up',['raw_feed','process_water'],['slurry','rejects'],{target_slurry_dry_matter_fraction:.20}],
+  ['maceration','Maceration / Size Reduction',['feed'],['outlet','rejects'],{grit_reject_fraction:.005,specific_energy_kWh_per_t_feed:12,manual_electrical_load_kW:0,electrical_load_factor_fraction:1,annual_operating_hours:8000}],
   ['pretreatment','Pretreatment',['feed'],['slurry'],{}],['hydrolysis','Hydrolysis',['feed'],['hydrolysate'],{}],
   ['fermentation','Fermentation',['feed'],['broth','co2'],{}],['solids_separation','Solids Separation',['feed'],['liquid','cake'],{}],
   ['beer_column','Beer Column',['feed'],['overhead','bottoms'],{}],['rectifier','Rectifier',['feed'],['overhead','bottoms'],{}],

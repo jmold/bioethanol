@@ -249,6 +249,18 @@
       }
     },
     {
+      "id": "maceration_rejects",
+      "type": "solid_sink",
+      "name": "Maceration / Grit Rejects",
+      "params": {
+        "classification": "WASTE"
+      },
+      "position": {
+        "x": 500,
+        "y": 445
+      }
+    },
+    {
       "id": "fermentation_vent",
       "type": "vent_sink",
       "name": "Fermentation CO2 Vent",
@@ -424,6 +436,13 @@
     }
   ],
   "connections": [
+    {
+      "id": "S101R",
+      "from_block": "macerator",
+      "from_port": "rejects",
+      "to_block": "maceration_rejects",
+      "to_port": "feed"
+    },
     {
       "id": "S401",
       "from_block": "hydro",
