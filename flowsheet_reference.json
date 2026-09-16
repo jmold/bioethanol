@@ -1,44 +1,55 @@
 {
-  "name": "Miscanthus Bioethanol P01-P12 Reference Route",
+  "name": "Miscanthus Bioethanol Reference Route V0.24",
   "blocks": [
     {
-      "id": "process_water",
-      "type": "water_supply",
-      "name": "Process Water Supply",
+      "id": "raw_feed",
+      "type": "raw_feed",
+      "name": "Raw Miscanthus Feed",
       "position": {
-        "x": 70,
-        "y": 55
+        "x": 30,
+        "y": 245
       },
       "params": {
-        "flow_tph": 11.4705882353,
+        "as_received_feed_tph": 3.5294117647,
+        "dry_matter_fraction": 0.85,
         "temperature_C": 10,
-        "pressure_bar_abs": 2,
-        "density_kg_per_m3": 999
+        "glucan_dry_fraction": 0.4287,
+        "xylan_dry_fraction": 0.2202,
+        "lignin_dry_fraction": 0.1967,
+        "ash_dry_fraction": 0.0233,
+        "other_organics_dry_fraction": 0.1311
       }
     },
     {
       "id": "feed",
       "type": "feed_preparation",
-      "name": "P01 Feed Preparation & Slurry Make-up",
+      "name": "P01 Feed Preparation / Slurry Make-up",
       "position": {
-        "x": 70,
+        "x": 270,
         "y": 245
       },
       "params": {
-        "dry_miscanthus_tph": 3,
-        "incoming_moisture_wet_fraction": 0.15,
         "target_slurry_dry_matter_fraction": 0.2,
-        "maceration_grit_reject_fraction": 0.005,
-        "dry_feed_composition": {
-          "glucan": 0.4287,
-          "xylan": 0.2202,
-          "lignin": 0.1967,
-          "ash": 0.0233,
-          "other_organics": 0.1311
-        },
-        "specific_drive_kWh_per_t_dry": 12,
-        "drive_basis_status": "PROVISIONAL ENGINEERING ASSUMPTION",
-        "excel_parity_mode": true
+        "process_water_temperature_C": 10,
+        "slurry_density_kg_per_m3": 1000,
+        "manual_electrical_load_kW": 0,
+        "electrical_load_factor_fraction": 1,
+        "annual_operating_hours": 8000
+      }
+    },
+    {
+      "id": "macerator",
+      "type": "maceration",
+      "name": "Maceration / Size Reduction",
+      "position": {
+        "x": 500,
+        "y": 245
+      },
+      "params": {
+        "specific_energy_kWh_per_t_feed": 12,
+        "manual_electrical_load_kW": 0,
+        "electrical_load_factor_fraction": 1,
+        "annual_operating_hours": 8000
       }
     },
     {
@@ -46,13 +57,16 @@
       "type": "pump",
       "name": "Feed Transfer Pump",
       "position": {
-        "x": 270,
+        "x": 730,
         "y": 245
       },
       "params": {
         "delta_p_bar": 3,
         "efficiency_fraction": 0.7,
-        "density_kg_per_m3": 1000
+        "density_kg_per_m3": 1000,
+        "manual_electrical_load_kW": 0,
+        "electrical_load_factor_fraction": 1,
+        "annual_operating_hours": 8000
       }
     },
     {
@@ -293,18 +307,6 @@
       }
     },
     {
-      "id": "feed_rejects_terminal",
-      "type": "solid_sink",
-      "name": "Feed Preparation Rejects",
-      "params": {
-        "classification": "WASTE"
-      },
-      "position": {
-        "x": 95,
-        "y": 445
-      }
-    },
-    {
       "id": "pretreat_chemical",
       "type": "material_dose",
       "name": "Pretreatment Chemical",
@@ -400,23 +402,28 @@
         "useful_steam_enthalpy_kJ_per_kg": 2100,
         "basis": "Google Sheet P03 Heat Recovery"
       }
+    },
+    {
+      "id": "heat_generator",
+      "type": "heat_generator",
+      "name": "Heat Generator / Thermal Utility Header",
+      "position": {
+        "x": 805,
+        "y": 620
+      },
+      "params": {
+        "supply_temperature_C": 90,
+        "return_temperature_C": 70,
+        "generator_efficiency_fraction": 0.9,
+        "manual_thermal_demand_kW": 0,
+        "available_recovered_heat_kW": 0,
+        "manual_electrical_load_kW": 0,
+        "electrical_load_factor_fraction": 1,
+        "annual_operating_hours": 8000
+      }
     }
   ],
   "connections": [
-    {
-      "id": "W101",
-      "from_block": "process_water",
-      "from_port": "water",
-      "to_block": "feed",
-      "to_port": "process_water"
-    },
-    {
-      "id": "S101",
-      "from_block": "feed",
-      "from_port": "slurry",
-      "to_block": "feed_transfer_pump",
-      "to_port": "feed"
-    },
     {
       "id": "S401",
       "from_block": "hydro",
@@ -481,13 +488,6 @@
       "to_port": "feed"
     },
     {
-      "id": "S102R",
-      "from_block": "feed",
-      "from_port": "rejects",
-      "to_block": "feed_rejects_terminal",
-      "to_port": "feed"
-    },
-    {
       "id": "EVID_ENZ",
       "from_block": "pretreat",
       "from_port": "slurry",
@@ -548,6 +548,27 @@
       "from_block": "pretreat_heat_recovery",
       "from_port": "cooled_slurry",
       "to_block": "hydro",
+      "to_port": "feed"
+    },
+    {
+      "id": "S001",
+      "from_block": "raw_feed",
+      "from_port": "feed",
+      "to_block": "feed",
+      "to_port": "raw_feed"
+    },
+    {
+      "id": "S101",
+      "from_block": "feed",
+      "from_port": "slurry",
+      "to_block": "macerator",
+      "to_port": "feed"
+    },
+    {
+      "id": "S101M",
+      "from_block": "macerator",
+      "from_port": "outlet",
+      "to_block": "feed_transfer_pump",
       "to_port": "feed"
     }
   ]
