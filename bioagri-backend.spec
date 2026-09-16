@@ -1,20 +1,28 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 
 a = Analysis(
     ["desktop_backend.py"],
-    pathex=[],
+    pathex=[os.path.abspath('.')],
     binaries=[],
     datas=[
         ("flowsheet_reference.json", "."),
         ("flowsheet_alt_separation_before_fermentation.json", "."),
     ],
-    hiddenimports=["blocks", "models", "flowsheet", "api", "api_v020", "api_v021", "api_v022", "api_v023", "uvicorn.logging", "uvicorn.loops.auto", "uvicorn.protocols.http.auto", "uvicorn.protocols.websockets.auto", "uvicorn.lifespan.on"],
+    hiddenimports=["blocks", "models", "flowsheet", "api", "api_v020", "uvicorn.logging", "uvicorn.loops.auto", "uvicorn.protocols.http.auto", "uvicorn.protocols.websockets.auto", "uvicorn.lifespan.on"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
     noarchive=False,
     optimize=0,
+    module_collection_mode={
+        "blocks": "py",
+        "models": "py",
+        "flowsheet": "py",
+        "api": "py",
+        "api_v020": "py",
+    },
 )
 pyz = PYZ(a.pure)
 exe = EXE(
