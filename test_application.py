@@ -41,6 +41,14 @@ class ApplicationRegressionTests(unittest.TestCase):
         for key in ("ethanol_product_tph", "electrical_kW", "thermal_kW", "steam_kgph", "wastewater_tph"):
             self.assertIn(key, kpis)
 
+    def test_global_operating_basis_controls_annual_energy(self):
+        definition = json.loads(json.dumps(self.reference))
+        definition["operating_basis"] = {"hours_per_day": 20, "days_per_year": 300}
+        result = Flowsheet(definition).run()
+        self.assertEqual(result["operating_basis"]["annual_operating_hours"], 6000)
+        macerator = result["block_results"]["macerator"]["metrics"]
+        self.assertAlmostEqual(macerator["annual_electricity_kWh"], macerator["applied_electrical_load_kW"] * 6000)
+
     def test_empty_flowsheet_is_rejected_with_422(self):
         with self.assertRaises(HTTPException) as caught:
             validate_flowsheet_definition({"name": "Empty", "blocks": [], "connections": []})

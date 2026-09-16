@@ -73,8 +73,8 @@ class FeedPreparationBlock(BaseBlock):
             total=dry/(1-moisture)
             feed=Stream(f"{self.id}:raw_feed",{"water":total-dry,**{k:dry*v for k,v in composition.items()}},temperature_C=p["process_water_temperature_C"])
         if not 0<target<1:return BlockResult({},errors=["Target slurry dry matter must be between 0 and 1."])
-        dry=sum(v for k,v in feed.components_tph.items() if k!="water"); add=max(0.0,dry/target-feed.total_tph)
-        wt=inputs.get("process_water"); water_T=wt.temperature_C if wt and wt.temperature_C is not None else p["process_water_temperature_C"]
+        dry=sum(v for k,v in feed.components_tph.items() if k!="water"); required_add=max(0.0,dry/target-feed.total_tph)
+        wt=inputs.get("process_water"); add=wt.get("water") if wt else required_add; water_T=wt.temperature_C if wt and wt.temperature_C is not None else p["process_water_temperature_C"]
         comp=dict(feed.components_tph); comp["water"]=feed.get("water")+add; total=sum(comp.values())
         mix_T=(feed.total_tph*(feed.temperature_C or water_T)+add*water_T)/total if total else water_T
         reject_fraction=p.get("maceration_grit_reject_fraction",0.005) if legacy else 0.0
@@ -83,11 +83,11 @@ class FeedPreparationBlock(BaseBlock):
         rejects=Stream(f"{self.id}:rejects",rejected,temperature_C=mix_T,phase="solid",note="Maceration/grit reject")
         manual=max(0.0,p["manual_electrical_load_kW"]); elec=manual*max(0.0,p["electrical_load_factor_fraction"])
         warnings=[]
-        if wt and abs(wt.get("water")-add)>1e-6:warnings.append(f"Connected water is {wt.get('water'):.4f} t/h; calculated requirement {add:.4f} t/h is used.")
-        return BlockResult({"slurry":out,"rejects":rejects},metrics={"as_received_feed_tph":feed.total_tph,"incoming_feed_water_tph":feed.get("water"),"incoming_dry_matter_tph":dry,"process_water_addition_tph":add,"required_process_water_tph":add,
+        if wt and abs(add-required_add)>1e-6:warnings.append(f"Connected water is {add:.4f} t/h versus {required_add:.4f} t/h required for the selected dry-matter target; the connected flow is used.")
+        return BlockResult({"slurry":out,"rejects":rejects},metrics={"as_received_feed_tph":feed.total_tph,"incoming_feed_water_tph":feed.get("water"),"incoming_dry_matter_tph":dry,"process_water_addition_tph":add,"required_process_water_tph":required_add,
             "reject_total_tph":rejects.total_tph,"slurry_tph":out.total_tph,"actual_slurry_dry_matter_fraction":sum(v for k,v in retained.items() if k!="water")/out.total_tph if out.total_tph else 0,
             "annual_electricity_kWh":elec*p["annual_operating_hours"],"closure_error_tph":feed.total_tph+add-out.total_tph-rejects.total_tph},
-            utilities=UtilityDemand(electricity_kW=elec,peak_electricity_kW=manual,process_water_tph=add),
+            utilities=UtilityDemand(electricity_kW=elec,peak_electricity_kW=manual,process_water_tph=0.0 if wt else add),
             equipment=[EquipmentRequirement(equipment_type="Feed preparation / slurry make-up",design_flow_tph=out.total_tph,motor_kW=manual)],
             metadata=EngineeringMetadata(status="CALCULATED",basis="Raw-feed DM plus selected slurry DM target",confidence="HIGH",note="Water is calculated automatically; maceration is separate."),warnings=warnings)
 

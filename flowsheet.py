@@ -11,12 +11,21 @@ class FlowsheetError(Exception):
 class Flowsheet:
     def __init__(self, definition: dict):
         self.definition = definition
+        legacy_hours = next((b.get("params", {}).get("annual_operating_hours") for b in definition.get("blocks", []) if b.get("params", {}).get("annual_operating_hours") is not None), 8000.0)
+        basis = definition.get("operating_basis") or {}
+        hours_per_day = float(basis.get("hours_per_day", 24.0))
+        days_per_year = float(basis.get("days_per_year", float(legacy_hours) / hours_per_day if hours_per_day else 0.0))
+        self.operating_basis = {
+            "hours_per_day": hours_per_day,
+            "days_per_year": days_per_year,
+            "annual_operating_hours": hours_per_day * days_per_year,
+        }
         self.blocks = {
             b["id"]: BlockInstance(
                 id=b["id"],
                 type=b["type"],
                 name=b.get("name",b["id"]),
-                params=b.get("params",{}),
+                params={**b.get("params",{}), "annual_operating_hours": self.operating_basis["annual_operating_hours"]},
                 position=b.get("position",{})
             )
             for b in definition.get("blocks",[])
@@ -30,6 +39,11 @@ class Flowsheet:
 
     def validate_structure(self):
         errors = []
+
+        if not 0 < self.operating_basis["hours_per_day"] <= 24:
+            errors.append("Plant operating hours per day must be greater than 0 and no more than 24.")
+        if not 0 < self.operating_basis["days_per_year"] <= 366:
+            errors.append("Plant operating days per year must be greater than 0 and no more than 366.")
 
         # IDs and block types
         for bid, b in self.blocks.items():
@@ -552,6 +566,7 @@ class Flowsheet:
 
 
         return {
+            "operating_basis": self.operating_basis,
             "blocks": {bid:b.to_dict() for bid,b in self.blocks.items()},
             "connections": [c.to_dict() for c in self.connections],
             "streams": {sid:s.to_dict() for sid,s in self.streams.items()},

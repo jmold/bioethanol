@@ -18,7 +18,8 @@ const apiFetch:typeof window.fetch = isDesktop ? (tauriFetch as typeof window.fe
 
 type BlockDef={id:string,type:string,name:string,params:Record<string,any>,position:{x:number,y:number}}
 type Connection={id:string,from_block:string,from_port:string,to_block:string,to_port:string}
-type Flowsheet={name:string,blocks:BlockDef[],connections:Connection[]}
+type OperatingBasis={hours_per_day:number,days_per_year:number}
+type Flowsheet={name:string,operating_basis?:OperatingBasis,blocks:BlockDef[],connections:Connection[]}
 
 const fallbackBlockLibrary=[
   ['raw_feed','Raw Miscanthus Feed',[],['feed'],{as_received_feed_tph:3.5294,dry_matter_fraction:.85,temperature_C:15}],
@@ -461,6 +462,11 @@ function App(){
     commit({...flow,blocks:flow.blocks.map(b=>b.id===selectedBlock.id?{...b,...patch}:b)})
   }
   function updateParam(k:string,v:any){if(!flow||!selectedBlock)return;commit({...flow,blocks:flow.blocks.map(b=>b.id===selectedBlock.id?{...b,params:{...b.params,[k]:v}}:b)})}
+  function updateOperatingBasis(key:keyof OperatingBasis,value:number){
+    if(!flow)return
+    const current=flow.operating_basis||{hours_per_day:24,days_per_year:8000/24}
+    commit({...flow,operating_basis:{...current,[key]:value}},'Updated plant operating basis')
+  }
 
   function addBlock(type:string){
     if(!flow)return
@@ -534,7 +540,7 @@ function App(){
   }
   function loadSaved(name:string){if(!name)return;if(isDirty&&!window.confirm('Open another flowsheet and discard unsaved changes?'))return;setBusy(true);setNotice(`Opening legacy saved flow “${name}”…`);apiFetch(`${API}/api/saved/${encodeURIComponent(name)}`).then(r=>{if(!r.ok)throw new Error(`Open failed (${r.status})`);return r.json()}).then(f=>{setFlow(f);setResults(null);setHistory([]);setFuture([]);setSelected(null);setSelectedStream(null);setCurrentFilePath(null);setIsDirty(false);setNotice(`Opened legacy saved flow “${name}”`)}).catch((e:any)=>setNotice(e.message)).finally(()=>setBusy(false))}
   function loadPreset(which:string){if(isDirty&&!window.confirm('Open this route and discard unsaved changes?'))return;setBusy(true);setNotice('Opening route…');apiFetch(`${API}/api/${which}`).then(r=>{if(!r.ok)throw new Error(`Could not open route (${r.status})`);return r.json()}).then(f=>{setFlow(arrangeFlowsheet(f));setResults(null);setHistory([]);setFuture([]);setSelected(null);setSelectedStream(null);setIsDirty(false);setNotice('Route ready')}).catch((e:any)=>setNotice(e.message)).finally(()=>setBusy(false))}
-  function newFlowsheet(){if(isDirty&&!window.confirm('Start a new blank flowsheet? Unsaved changes will be lost.'))return;setFlow({name:'Untitled flowsheet',blocks:[],connections:[]});setResults(null);setSelected(null);setSelectedStream(null);setHistory([]);setFuture([]);setCurrentFilePath(null);setIsDirty(true);setNotice('Blank flowsheet created')}
+  function newFlowsheet(){if(isDirty&&!window.confirm('Start a new blank flowsheet? Unsaved changes will be lost.'))return;setFlow({name:'Untitled flowsheet',operating_basis:{hours_per_day:24,days_per_year:8000/24},blocks:[],connections:[]});setResults(null);setSelected(null);setSelectedStream(null);setHistory([]);setFuture([]);setCurrentFilePath(null);setIsDirty(true);setNotice('Blank flowsheet created')}
 
   function exportFlowsheet(){if(flow)downloadText(`${(flow.name||'flowsheet').replace(/[^a-z0-9-_ ]/gi,'')}.json`,JSON.stringify(flow,null,2))}
   function importFlowsheet(file?:File){if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const value=JSON.parse(String(reader.result));if(!Array.isArray(value.blocks)||!Array.isArray(value.connections))throw new Error('This is not a valid BioAgri flowsheet file.');setFlow(value);setResults(null);setHistory([]);setFuture([]);setCurrentFilePath(null);setIsDirty(true);setNotice(`Imported “${value.name||file.name}”`)}catch(e:any){setNotice(e.message)}};reader.readAsText(file)}
@@ -551,7 +557,7 @@ function App(){
 
   const basicKeys=useMemo(()=>{
     if(!selectedBlock)return []
-    const electricalDefaults=['manual_electrical_load_kW','electrical_load_factor_fraction','annual_operating_hours'];const keys=[...Object.keys(selectedBlock.params||{}),...electricalDefaults.filter(k=>!(k in (selectedBlock.params||{})))];const priority=/temp|temperature|time|hour|conversion|yield|pressure|dm|solids|loading|recovery|fraction|flow|volume|purity|reflux/i
+    const electricalDefaults=['manual_electrical_load_kW','electrical_load_factor_fraction'];const keys=[...Object.keys(selectedBlock.params||{}),...electricalDefaults.filter(k=>!(k in (selectedBlock.params||{})))].filter(k=>k!=='annual_operating_hours');const priority=/temp|temperature|time|hour|conversion|yield|pressure|dm|solids|loading|recovery|fraction|flow|volume|purity|reflux/i
     return [...keys.filter(k=>priority.test(k)),...keys.filter(k=>!priority.test(k))].slice(0,7)
   },[selectedBlock])
   const advancedKeys=useMemo(()=>selectedBlock?Object.keys(selectedBlock.params||{}).filter(k=>!basicKeys.includes(k)):[],[selectedBlock,basicKeys])
@@ -593,6 +599,11 @@ function App(){
         <button onClick={autoArrange} disabled={!flow?.blocks.length||activePage!=='flowsheet'}>Organise flow</button>
         <button onClick={()=>saveCurrent(false)} disabled={busy||!flow}>Save</button>
         <button onClick={openFlowsheetFile} disabled={busy}>Open…</button>
+        <details className="route-menu operating-basis-menu"><summary>Plant basis</summary><div className="menu-popover">
+          <label><span>Operating hours/day</span><input type="number" min="0.1" max="24" step="0.5" value={flow?.operating_basis?.hours_per_day??24} onChange={e=>updateOperatingBasis('hours_per_day',Number(e.target.value))}/></label>
+          <label><span>Operating days/year</span><input type="number" min="1" max="366" step="1" value={flow?.operating_basis?.days_per_year??8000/24} onChange={e=>updateOperatingBasis('days_per_year',Number(e.target.value))}/></label>
+          <small>{fmt((flow?.operating_basis?.hours_per_day??24)*(flow?.operating_basis?.days_per_year??8000/24),0)} operating h/year</small>
+        </div></details>
         <details className="route-menu"><summary>Routes</summary><div className="menu-popover"><button onClick={()=>loadPreset('reference-flowsheet')}>Reference route</button><button onClick={()=>loadPreset('alternative-flowsheet')}>Alternative route</button></div></details>
         <button onClick={()=>setIssuesOpen(true)}>Issues {results?`(${errorCount+warningCount+decisionCount})`:''}</button>
         <button onClick={()=>setToolsOpen(true)}>Analyse</button>

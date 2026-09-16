@@ -105,7 +105,7 @@ jobs:
         with:
           tagName: app-v__VERSION__
           releaseName: "BioAgri Process Simulator v__VERSION__"
-          releaseBody: "BioAgri Process Simulator V0.23 introduces Digital Twin 2.0 with individual live batch vessels, batch lineage, transfer and pump state, Scheduler 2.0 with a per-vessel Gantt, and a new plant KPI dashboard. It also hardens Windows packaging against transient NSIS download failures. Existing installations will be offered this signed update automatically."
+          releaseBody: "BioAgri Process Simulator V0.24.4 adds an explicit feed-preparation process-water supply and stream, plus a global plant operating basis for hours per day, days per year, and derived annual operating hours. The global basis now drives equipment annual-energy calculations consistently."
           releaseDraft: false
           prerelease: false
           args: --bundles nsis
