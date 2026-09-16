@@ -48,7 +48,11 @@ class ShortcutResult:
     status: str = "MECHANISTIC SHORTCUT / NOT RIGOROUS RATE-BASED VLE"
 
     def to_dict(self):
-        return asdict(self)
+        result = asdict(self)
+        for key, value in result.items():
+            if isinstance(value, float) and not math.isfinite(value):
+                result[key] = "Infinity" if value > 0 else "-Infinity" if value < 0 else "NaN"
+        return result
 
 
 def wt_to_mole_fraction(w_ethanol: float) -> float:

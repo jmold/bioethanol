@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {createRoot} from 'react-dom/client'
 import {fetch as tauriFetch} from '@tauri-apps/plugin-http'
 import {check} from '@tauri-apps/plugin-updater'
+import {relaunch} from '@tauri-apps/plugin-process'
 import {invoke} from '@tauri-apps/api/core'
 import {
   ReactFlow, Background, Controls, MiniMap, addEdge, MarkerType,
@@ -364,6 +365,7 @@ function App(){
       if(!accept){setNotice(`Update ${update.version} is available`);return}
       setNotice(`Downloading BioAgri ${update.version}…`)
       await update.downloadAndInstall()
+      await relaunch()
     }catch(e:any){if(manual)setNotice(`Update check failed: ${e.message}`)}
   }
 

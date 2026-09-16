@@ -19,6 +19,7 @@ class ApplicationRegressionTests(unittest.TestCase):
     def test_reference_route_closes_and_matches_ethanol_baseline(self):
         result = Flowsheet(self.reference).run()
         self.assertEqual(result["errors"], [])
+        json.dumps(result, allow_nan=False)
         self.assertAlmostEqual(result["overall_material_closure"]["closure_error_tph"], 0.0, places=9)
         self.assertAlmostEqual(result["water_balance"]["reaction_adjusted_closure_error_tph"], 0.0, places=9)
         self.assertAlmostEqual(result["terminal_component_totals"]["ethanol"], 0.512321410609, places=10)

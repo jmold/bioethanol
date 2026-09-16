@@ -58,6 +58,10 @@ jobs:
               } catch {}
             }
             if (-not $ok) { throw "Bundled backend failed health check" }
+            $reference = Invoke-RestMethod -Uri "http://127.0.0.1:47831/api/reference-flowsheet" -TimeoutSec 5
+            $payload = @{ flowsheet = $reference } | ConvertTo-Json -Depth 100
+            $model = Invoke-RestMethod -Uri "http://127.0.0.1:47831/api/run" -Method Post -ContentType "application/json" -Body $payload -TimeoutSec 30
+            if ($model.errors.Count -gt 0) { throw "Bundled backend reference model returned errors: $($model.errors -join '; ')" }
           } catch {
             Write-Host "=== backend stdout ==="
             if (Test-Path $stdout) { Get-Content $stdout }

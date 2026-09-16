@@ -1,6 +1,6 @@
 # Bio-Agri Process Simulator — V0.24
 
-Application version: **0.24.2**
+Application version: **0.24.3**
 Engineering model version: **0.24.0**
 Schema version: **1.0.0**
 

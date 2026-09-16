@@ -14,7 +14,7 @@ from native_dynamic_engine import build_native_dynamic_simulation
 
 HERE = Path(__file__).resolve().parent
 
-APP_VERSION = "0.24.2"
+APP_VERSION = "0.24.3"
 MODEL_VERSION = "0.24.0"
 
 app = FastAPI(title="Bio-Agri Process Simulator API", version=APP_VERSION)
