@@ -53,6 +53,14 @@ jobs:
               } catch {}
             }
             if (-not $ok) { throw "Bundled backend failed health check" }
+          } catch {
+            Write-Host "=== backend stdout ==="
+            if (Test-Path $stdout) { Get-Content $stdout }
+            Write-Host "=== backend stderr ==="
+            if (Test-Path $stderr) { Get-Content $stderr }
+            $backendLog = Join-Path $env:LOCALAPPDATA "BioAgri Process Simulator\backend-error.log"
+            if (Test-Path $backendLog) { Write-Host "=== backend-error.log ==="; Get-Content $backendLog }
+            throw
           } finally {
             if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
           }
