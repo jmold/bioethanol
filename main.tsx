@@ -20,14 +20,17 @@ type Connection={id:string,from_block:string,from_port:string,to_block:string,to
 type Flowsheet={name:string,blocks:BlockDef[],connections:Connection[]}
 
 const fallbackBlockLibrary=[
+  ['raw_feed','Raw Miscanthus Feed',[],['feed'],{as_received_feed_tph:3.5294,dry_matter_fraction:.85,temperature_C:15}],
   ['water_supply','Process Water Supply',[],['water'],{flow_tph:11.4705882353,temperature_C:15,pressure_bar_abs:2,density_kg_per_m3:999}],
-  ['feed_preparation','Feed Preparation',['process_water'],['slurry','rejects'],{}],
+  ['feed_preparation','Feed Preparation / Slurry Make-up',['raw_feed','process_water'],['slurry'],{target_slurry_dry_matter_fraction:.20}],
+  ['maceration','Maceration / Size Reduction',['feed'],['outlet'],{specific_energy_kWh_per_t_feed:12,manual_electrical_load_kW:0,electrical_load_factor_fraction:1,annual_operating_hours:8000}],
   ['pretreatment','Pretreatment',['feed'],['slurry'],{}],['hydrolysis','Hydrolysis',['feed'],['hydrolysate'],{}],
   ['fermentation','Fermentation',['feed'],['broth','co2'],{}],['solids_separation','Solids Separation',['feed'],['liquid','cake'],{}],
   ['beer_column','Beer Column',['feed'],['overhead','bottoms'],{}],['rectifier','Rectifier',['feed'],['overhead','bottoms'],{}],
   ['molecular_sieve','Molecular Sieve',['feed'],['product','recycle'],{}],
-  ['pump','Pump',['feed'],['outlet'],{delta_p_bar:2,efficiency_fraction:.7,density_kg_per_m3:1000}],
-  ['heat_exchanger','Heat Exchanger',['hot_in','cold_in'],['hot_out','cold_out'],{effectiveness:.75,hot_cp_kJ_per_kgK:4,cold_cp_kJ_per_kgK:4}],
+  ['pump','Transfer Pump',['feed'],['outlet'],{delta_p_bar:2,efficiency_fraction:.7,density_kg_per_m3:1000,manual_electrical_load_kW:0,electrical_load_factor_fraction:1,annual_operating_hours:8000}],
+  ['heat_exchanger','Heat Exchanger',['process_in'],['process_out'],{target_process_outlet_temperature_C:50,process_cp_kJ_per_kgK:4,utility_supply_temperature_C:90,utility_return_temperature_C:70,utility_cp_kJ_per_kgK:4.18,overall_U_W_per_m2K:500,design_margin_fraction:.1}],
+  ['heat_generator','Heat Generator / Thermal Header',[],[],{supply_temperature_C:90,return_temperature_C:70,generator_efficiency_fraction:.9,manual_thermal_demand_kW:0,available_recovered_heat_kW:0}],
   ['heater_cooler','Heater / Cooler',['feed'],['outlet'],{target_temperature_C:50,cp_kJ_per_kgK:4}],
   ['heat_recovery','Heat Recovery',['hot_feed','cold_feed'],['hot_out','cold_out'],{effectiveness:.7}],
   ['mixer','Mixer',['inlet_a','inlet_b'],['outlet'],{}],['splitter','Splitter',['feed'],['outlet_a','outlet_b'],{fraction_to_a:.5}],
@@ -49,12 +52,19 @@ const majorComponents=(components:Record<string,number>={})=>Object.entries(comp
 
 function parameterMeta(key:string){
   const k=key.toLowerCase()
+  if(k==='efficiency_fraction') return {unit:'%',min:.01,max:1,step:.01,help:'Pump efficiency: fraction of shaft/electrical input converted to useful hydraulic power. 0.70 = 70%.'}
+  if(k==='delta_p_bar') return {unit:'bar',min:0,step:.1,help:'Pump Differential Pressure ΔP: required pressure rise from pump suction to discharge. Used with actual flow and efficiency to calculate power.'}
+  if(k==='dry_matter_fraction'||k==='target_slurry_dry_matter_fraction') return {unit:'fraction',min:.01,max:1,step:.01,help:'Dry matter fraction. For example 0.20 = 20% DM.'}
+  if(k==='manual_electrical_load_kw') return {unit:'kW',min:0,step:.1,help:'Optional vendor/manual connected electrical load. Where a calculated equipment load exists, a non-zero manual value overrides it.'}
+  if(k==='electrical_load_factor_fraction') return {unit:'fraction',min:0,max:1,step:.01,help:'Fraction of connected electrical load applied during operation.'}
+  if(k==='annual_operating_hours') return {unit:'h/y',min:0,step:100,help:'Annual operating hours used to calculate electrical energy consumption.'}
+  if(k==='overall_u_w_per_m2k') return {unit:'W/m²K',min:1,step:10,help:'Overall heat-transfer coefficient U used with LMTD to calculate exchanger area.'}
   if(/fraction|conversion|yield|recovery|efficiency|moisture|purity|entrainment/.test(k)) return {unit:'fraction',min:0,max:1,step:.01,help:'Enter a fraction between 0 and 1. For example, 0.85 means 85%.'}
   if(/temperature|_c$/.test(k)) return {unit:'°C',step:1,help:'Operating temperature in degrees Celsius.'}
-  if(/pressure/.test(k)) return {unit:'bar(a)',min:0,step:.1,help:'Absolute operating pressure in bar.'}
+  if(/pressure/.test(k)) return {unit:'bar(a)',min:0,step:.1,help:'Operating pressure in bar.'}
   if(/time|_h$|hours/.test(k)) return {unit:'h',min:0,step:.1,help:'Operating or residence time in hours.'}
   if(/_kw|duty|power|heat/.test(k)) return {unit:'kW',min:0,step:1,help:'Thermal or electrical duty in kilowatts.'}
-  if(/m3ph|m3_per_h|pump_rate/.test(k)) return {unit:'m³/h',min:0.01,step:.1,help:'Selected transfer-pump volumetric capacity. Batch fill or empty time is calculated as working volume divided by this rate.'}
+  if(/m3ph|m3_per_h|pump_rate/.test(k)) return {unit:'m³/h',min:0.01,step:.1,help:'Volumetric flow rate.'}
   if(/_tph|flow/.test(k)) return {unit:'t/h',min:0,step:.01,help:'Continuous mass flow in tonnes per hour.'}
   if(/volume|_m3/.test(k)) return {unit:'m³',min:0,step:1,help:'Working or installed volume in cubic metres.'}
   if(/density/.test(k)) return {unit:'kg/m³',min:0,step:1,help:'Material density.'}
@@ -539,7 +549,7 @@ function App(){
 
   const basicKeys=useMemo(()=>{
     if(!selectedBlock)return []
-    const keys=Object.keys(selectedBlock.params||{});const priority=/temp|temperature|time|hour|conversion|yield|pressure|dm|solids|loading|recovery|fraction|flow|volume|purity|reflux/i
+    const electricalDefaults=['manual_electrical_load_kW','electrical_load_factor_fraction','annual_operating_hours'];const keys=[...Object.keys(selectedBlock.params||{}),...electricalDefaults.filter(k=>!(k in (selectedBlock.params||{})))];const priority=/temp|temperature|time|hour|conversion|yield|pressure|dm|solids|loading|recovery|fraction|flow|volume|purity|reflux/i
     return [...keys.filter(k=>priority.test(k)),...keys.filter(k=>!priority.test(k))].slice(0,7)
   },[selectedBlock])
   const advancedKeys=useMemo(()=>selectedBlock?Object.keys(selectedBlock.params||{}).filter(k=>!basicKeys.includes(k)):[],[selectedBlock,basicKeys])
