@@ -35,134 +35,61 @@ class BaseBlock:
             "default_params": dict(self.default_params),
         }
 
+class RawFeedBlock(BaseBlock):
+    type_name="raw_feed"; display_name="Raw Miscanthus Feed"
+    input_ports={}
+    output_ports={"feed":PortSpec("feed","out",description="As-received Miscanthus feed")}
+    default_params={"as_received_feed_tph":3.5294117647,"dry_matter_fraction":0.85,"temperature_C":15.0,
+        "glucan_dry_fraction":0.4287,"xylan_dry_fraction":0.2202,"lignin_dry_fraction":0.1967,"ash_dry_fraction":0.0233,"other_organics_dry_fraction":0.1311}
+    def calculate(self,inputs):
+        p={**self.default_params,**self.params}; total=p["as_received_feed_tph"]; dm=p["dry_matter_fraction"]
+        if total<0 or not 0<dm<=1:return BlockResult({},errors=["Raw feed flow must be non-negative and dry matter must be between 0 and 1."])
+        dry=total*dm; f={k.replace("_dry_fraction",""):v for k,v in p.items() if k.endswith("_dry_fraction")}
+        if abs(sum(f.values())-1)>1e-4:return BlockResult({},errors=["Raw Miscanthus dry-basis composition fractions must sum to 1.0."])
+        comp={"water":total-dry,**{k:dry*v for k,v in f.items()}}
+        out=Stream(f"{self.id}:feed",comp,temperature_C=p["temperature_C"],phase="solid",note="As-received Miscanthus feed")
+        return BlockResult({"feed":out},metrics={"as_received_feed_tph":total,"dry_feed_tph":dry,"dry_matter_fraction":dm},
+            metadata=EngineeringMetadata(status="USER INPUT",basis="Miscanthus feedstock definition",confidence="HIGH"))
+
 class FeedPreparationBlock(BaseBlock):
-    type_name = "feed_preparation"
-    display_name = "Feed Preparation"
-    input_ports = {
-        "process_water": PortSpec("process_water", "in", required=False, description="Fresh or recovered process water")
-    }
-    output_ports = {
-        "slurry": PortSpec("slurry", "out", description="Prepared biomass slurry"),
-        "rejects": PortSpec("rejects", "out", required=False, description="Maceration/grit rejects")
-    }
+    type_name="feed_preparation"; display_name="Feed Preparation / Slurry Make-up"
+    input_ports={"raw_feed":PortSpec("raw_feed","in",description="As-received Miscanthus feed"),
+                 "process_water":PortSpec("process_water","in",required=False,description="Optional water connection; required flow is calculated")}
+    output_ports={"slurry":PortSpec("slurry","out",description="Prepared Miscanthus slurry")}
+    default_params={"target_slurry_dry_matter_fraction":0.20,"process_water_temperature_C":15.0,"slurry_density_kg_per_m3":1000.0,
+                    "manual_electrical_load_kW":0.0,"electrical_load_factor_fraction":1.0,"annual_operating_hours":8000.0}
+    def calculate(self,inputs):
+        errors=self.validate_inputs(inputs)
+        if errors:return BlockResult({},errors=errors)
+        p={**self.default_params,**self.params}; feed=inputs["raw_feed"]; target=p["target_slurry_dry_matter_fraction"]
+        if not 0<target<1:return BlockResult({},errors=["Target slurry dry matter must be between 0 and 1."])
+        dry=sum(v for k,v in feed.components_tph.items() if k!="water"); add=max(0.0,dry/target-feed.total_tph)
+        wt=inputs.get("process_water"); water_T=wt.temperature_C if wt and wt.temperature_C is not None else p["process_water_temperature_C"]
+        comp=dict(feed.components_tph); comp["water"]=feed.get("water")+add; total=sum(comp.values())
+        mix_T=(feed.total_tph*(feed.temperature_C or water_T)+add*water_T)/total if total else water_T
+        out=Stream(f"{self.id}:slurry",comp,temperature_C=mix_T,density_kg_per_m3=p["slurry_density_kg_per_m3"],note="Miscanthus slurry at calculated water addition")
+        manual=max(0.0,p["manual_electrical_load_kW"]); elec=manual*max(0.0,p["electrical_load_factor_fraction"])
+        warnings=[]
+        if wt and abs(wt.get("water")-add)>1e-6:warnings.append(f"Connected water is {wt.get('water'):.4f} t/h; calculated requirement {add:.4f} t/h is used.")
+        return BlockResult({"slurry":out},metrics={"as_received_feed_tph":feed.total_tph,"incoming_dry_matter_tph":dry,"required_process_water_tph":add,
+            "slurry_tph":out.total_tph,"actual_slurry_dry_matter_fraction":dry/out.total_tph if out.total_tph else 0,
+            "annual_electricity_kWh":elec*p["annual_operating_hours"],"closure_error_tph":feed.total_tph+add-out.total_tph},
+            utilities=UtilityDemand(electricity_kW=elec,peak_electricity_kW=manual,process_water_tph=add),
+            equipment=[EquipmentRequirement(equipment_type="Feed preparation / slurry make-up",design_flow_tph=out.total_tph,motor_kW=manual)],
+            metadata=EngineeringMetadata(status="CALCULATED",basis="Raw-feed DM plus selected slurry DM target",confidence="HIGH",note="Water is calculated automatically; maceration is separate."),warnings=warnings)
 
-    def calculate(self, inputs):
-        errors = self.validate_inputs(inputs)
-        if errors:
-            return BlockResult({}, errors=errors)
-        p = self.params
-        dry = p.get("dry_miscanthus_tph", 3.0)
-        moisture = p.get("incoming_moisture_wet_fraction", 0.15)
-        target_dm = p.get("target_slurry_dry_matter_fraction", 0.20)
-        reject_frac = p.get("maceration_grit_reject_fraction", 0.005)
-        comp = p.get("dry_feed_composition", {
-            "glucan": 0.4287, "xylan": 0.2202, "lignin": 0.1967, "ash": 0.0233, "other_organics": 0.1311
-        })
-        specific_drive_kWh_per_t_dry = p.get("specific_drive_kWh_per_t_dry", 12.0)
-        status = p.get("drive_basis_status","PROVISIONAL ENGINEERING ASSUMPTION")
-
-        if not (0 <= moisture < 1):
-            return BlockResult({}, errors=["Incoming moisture fraction must be between 0 and 1."])
-        if target_dm <= 0 or target_dm >= 1:
-            return BlockResult({}, errors=["Target slurry dry matter must be between 0 and 1."])
-
-        as_received = dry/(1-moisture)
-        incoming_water = as_received-dry
-        has_explicit_water = "process_water" in inputs
-        supplied_process_water = inputs["process_water"].get("water") if has_explicit_water else None
-        excel_parity_mode = p.get("excel_parity_mode", False)
-
-        if excel_parity_mode:
-            gross_slurry_total = dry/target_dm
-            required_process_water = max(0.0, gross_slurry_total-as_received)
-            process_water = required_process_water if supplied_process_water is None else supplied_process_water
-            gross_water = incoming_water+process_water
-
-            reject_total = gross_slurry_total*reject_frac
-            rejected_dry = dry*reject_frac
-            rejected_water = reject_total-rejected_dry
-            retained_dry = dry-rejected_dry
-            slurry_total = gross_slurry_total-reject_total
-            water_required_total = gross_water-rejected_water
-        else:
-            retained_dry = dry*(1-reject_frac)
-            rejected_dry = dry-retained_dry
-            rejected_water = 0.0
-            required_slurry_total = retained_dry/target_dm
-            required_water_total = required_slurry_total-retained_dry
-            required_process_water = max(0.0, required_water_total-incoming_water)
-            process_water = required_process_water if supplied_process_water is None else supplied_process_water
-            water_required_total = incoming_water+process_water
-            slurry_total = retained_dry+water_required_total
-
-        slurry_comp = {
-            "water": water_required_total,
-            "glucan": retained_dry*comp["glucan"],
-            "xylan": retained_dry*comp["xylan"],
-            "lignin": retained_dry*comp["lignin"],
-            "ash": retained_dry*comp["ash"],
-            "other_organics": retained_dry*comp["other_organics"],
-        }
-        reject_comp = {
-            "water": rejected_water,
-            "glucan": rejected_dry*comp["glucan"],
-            "xylan": rejected_dry*comp["xylan"],
-            "lignin": rejected_dry*comp["lignin"],
-            "ash": rejected_dry*comp["ash"],
-            "other_organics": rejected_dry*comp["other_organics"],
-        }
-
-        water_temperature = inputs["process_water"].temperature_C if has_explicit_water else p.get("process_water_temperature_C",15.0)
-        slurry = Stream(f"{self.id}:slurry", slurry_comp, temperature_C=water_temperature, note="Prepared Miscanthus slurry", density_kg_per_m3=p.get("slurry_density_kg_per_m3",1000.0))
-        actual_dm = retained_dry/slurry.total_tph if slurry.total_tph else 0.0
-        rejects = Stream(f"{self.id}:rejects", reject_comp, phase="solid", note="Maceration/grit reject")
-
-        drive_kW = dry*specific_drive_kWh_per_t_dry
-        closure = (as_received + process_water) - (slurry.total_tph + rejects.total_tph)
-        warnings = []
-        if abs(process_water-required_process_water) > 1e-6:
-            warnings.append(
-                f"Connected process water is {process_water:.4f} t/h; {required_process_water:.4f} t/h is required for the selected dry-matter target. Actual slurry dry matter is {actual_dm:.4f}."
-            )
-
-        return BlockResult(
-            {"slurry": slurry, "rejects": rejects},
-            metrics={
-                "as_received_feed_tph": as_received,
-                "incoming_feed_water_tph": incoming_water,
-                "process_water_addition_tph": process_water,
-                "required_process_water_tph": required_process_water,
-                "actual_slurry_dry_matter_fraction": actual_dm,
-                "reject_dry_tph": rejected_dry,
-                "reject_water_tph": rejected_water,
-                "reject_total_tph": rejects.total_tph,
-                "slurry_tph": slurry.total_tph,
-                "closure_error_tph": closure
-            },
-            utilities=UtilityDemand(
-                electricity_kW=drive_kW,
-                peak_electricity_kW=drive_kW,
-                process_water_tph=0.0 if has_explicit_water else process_water
-            ),
-            discharges=Discharge(
-                solid_waste_tph=rejects.total_tph
-            ),
-            equipment=[
-                EquipmentRequirement(
-                    equipment_type="Feed preparation / size reduction",
-                    design_flow_tph=as_received,
-                    motor_kW=drive_kW,
-                    note="Drive load is a provisional screening basis until selected equipment/vendor data are available."
-                )
-            ],
-            metadata=EngineeringMetadata(
-                status=status,
-                basis="Project mass balance + provisional specific drive",
-                confidence="MEDIUM",
-                note="Process-water addition is calculated from feed moisture and slurry dry-matter target."
-            ),
-            warnings=warnings
-        )
+class MacerationBlock(BaseBlock):
+    type_name="maceration"; display_name="Maceration / Size Reduction"
+    input_ports={"feed":PortSpec("feed","in")}; output_ports={"outlet":PortSpec("outlet","out")}
+    default_params={"specific_energy_kWh_per_t_feed":12.0,"manual_electrical_load_kW":0.0,"electrical_load_factor_fraction":1.0,"annual_operating_hours":8000.0}
+    def calculate(self,inputs):
+        errors=self.validate_inputs(inputs)
+        if errors:return BlockResult({},errors=errors)
+        x=inputs["feed"];p={**self.default_params,**self.params}; calc=x.total_tph*max(0,p["specific_energy_kWh_per_t_feed"]); manual=max(0,p["manual_electrical_load_kW"])
+        base=manual if manual>0 else calc; elec=base*max(0,p["electrical_load_factor_fraction"]); out=x.copy(new_id=f"{self.id}:outlet");out.note="Macerated material"
+        return BlockResult({"outlet":out},metrics={"calculated_electrical_load_kW":calc,"applied_electrical_load_kW":elec,"annual_electricity_kWh":elec*p["annual_operating_hours"]},
+            utilities=UtilityDemand(electricity_kW=elec,peak_electricity_kW=base),equipment=[EquipmentRequirement(equipment_type="Macerator",design_flow_tph=x.total_tph,motor_kW=base)],
+            metadata=EngineeringMetadata(status="PROVISIONAL ENGINEERING ASSUMPTION",basis="Specific energy or manual vendor load",confidence="MEDIUM"))
 
 class WaterSupplyBlock(BaseBlock):
     type_name = "water_supply"
@@ -1769,7 +1696,7 @@ class DistillationUtilityEnvelopeBlock(BaseBlock):
 
 BLOCK_REGISTRY: Dict[str, Type[BaseBlock]] = {
     WaterSupplyBlock.type_name: WaterSupplyBlock,
-    FeedPreparationBlock.type_name: FeedPreparationBlock,
+    FeedPreparationBlock.type_name: FeedPreparationBlock,\n    MacerationBlock.type_name: MacerationBlock,
     PretreatmentBlock.type_name: PretreatmentBlock,
     HydrolysisBlock.type_name: HydrolysisBlock,
     FermentationBlock.type_name: FermentationBlock,
