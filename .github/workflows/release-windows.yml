@@ -41,7 +41,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $p = Start-Process -FilePath ".\dist\bioagri-backend.exe" -PassThru
+          $stdout = Join-Path $env:RUNNER_TEMP "backend-smoke-stdout.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "backend-smoke-stderr.log"
+          $p = Start-Process -FilePath ".\dist\bioagri-backend.exe" -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
           try {
             $ok = $false
             for ($i=0; $i -lt 30; $i++) {
