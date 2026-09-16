@@ -980,41 +980,48 @@ class TankBlock(BaseBlock):
         return BlockResult({"outlet":s},
                            metrics={"residence_time_h":residence,"required_working_volume_m3":volume})
 
-class HeatExchangerBlock(BaseBlock):
-    type_name = "heat_exchanger"
-    display_name = "Heat Exchanger"
-    input_ports = {
-        "hot_in": PortSpec("hot_in","in",description="Hot-side inlet"),
-        "cold_in": PortSpec("cold_in","in",description="Cold-side inlet")
-    }
-    output_ports = {
-        "hot_out": PortSpec("hot_out","out",description="Hot-side outlet"),
-        "cold_out": PortSpec("cold_out","out",description="Cold-side outlet")
-    }
+class HeatGeneratorBlock(BaseBlock):
+    type_name="heat_generator"; display_name="Heat Generator / Thermal Header"
+    input_ports={}; output_ports={}
+    default_params={"supply_temperature_C":90.0,"return_temperature_C":70.0,"generator_efficiency_fraction":0.90,
+        "manual_thermal_demand_kW":0.0,"available_recovered_heat_kW":0.0,"manual_electrical_load_kW":0.0,"electrical_load_factor_fraction":1.0,"annual_operating_hours":8000.0}
+    def calculate(self,inputs):
+        p={**self.default_params,**self.params}; eff=p["generator_efficiency_fraction"]
+        if not 0<eff<=1 or p["supply_temperature_C"]<=p["return_temperature_C"]:return BlockResult({},errors=["Heat generator efficiency must be 0..1 and supply temperature must exceed return temperature."])
+        demand=max(0,p["manual_thermal_demand_kW"]); recovered=min(demand,max(0,p["available_recovered_heat_kW"])); topup=demand-recovered; energy=topup/eff
+        manual=max(0,p["manual_electrical_load_kW"]);elec=manual*max(0,p["electrical_load_factor_fraction"])
+        return BlockResult({},metrics={"total_thermal_demand_kW":demand,"recovered_heat_kW":recovered,"net_top_up_heat_kW":topup,"generator_input_kW":energy,
+            "supply_temperature_C":p["supply_temperature_C"],"return_temperature_C":p["return_temperature_C"],"annual_generator_energy_kWh":energy*p["annual_operating_hours"]},
+            utilities=UtilityDemand(electricity_kW=elec,peak_electricity_kW=manual),
+            metadata=EngineeringMetadata(status="THERMAL UTILITY SYSTEM",basis="Supply/return header with heat recovery and top-up",confidence="MEDIUM",
+                note="Manual demand is the current aggregation bridge; heat users report their calculated duties."))
 
-    def calculate(self, inputs):
-        errors = self.validate_inputs(inputs)
-        if errors:
-            return BlockResult({}, errors=errors)
-        h, c = inputs["hot_in"], inputs["cold_in"]
-        if h.temperature_C is None or c.temperature_C is None:
-            return BlockResult({}, errors=["Heat exchanger requires temperatures on both inlet streams."])
-        eff = self.params.get("effectiveness",0.75)
-        cp_hot = self.params.get("hot_cp_kJ_per_kgK",4.0)
-        cp_cold = self.params.get("cold_cp_kJ_per_kgK",4.0)
-        if not 0 <= eff <= 1:
-            return BlockResult({}, errors=["Heat exchanger effectiveness must be between 0 and 1."])
-        ch = h.total_tph*1000/3600*cp_hot
-        cc = c.total_tph*1000/3600*cp_cold
-        cmin = min(ch,cc)
-        qmax = cmin*max(0,h.temperature_C-c.temperature_C)
-        q = eff*qmax
-        hot_out_t = h.temperature_C - (q/ch if ch>0 else 0)
-        cold_out_t = c.temperature_C + (q/cc if cc>0 else 0)
-        ho = h.copy(new_id=f"{self.id}:hot_out"); ho.temperature_C=hot_out_t; ho.note="Heat exchanger hot outlet"
-        co = c.copy(new_id=f"{self.id}:cold_out"); co.temperature_C=cold_out_t; co.note="Heat exchanger cold outlet"
-        return BlockResult({"hot_out":ho,"cold_out":co},
-                           metrics={"recovered_duty_kW":q,"hot_out_C":hot_out_t,"cold_out_C":cold_out_t})
+class HeatExchangerBlock(BaseBlock):
+    type_name="heat_exchanger"; display_name="Heat Exchanger"
+    input_ports={"process_in":PortSpec("process_in","in",description="Process stream inlet")}
+    output_ports={"process_out":PortSpec("process_out","out",description="Process stream outlet")}
+    default_params={"target_process_outlet_temperature_C":50.0,"process_cp_kJ_per_kgK":4.0,"utility_supply_temperature_C":90.0,"utility_return_temperature_C":70.0,
+        "utility_cp_kJ_per_kgK":4.18,"overall_U_W_per_m2K":500.0,"design_margin_fraction":0.10,"manual_electrical_load_kW":0.0,"electrical_load_factor_fraction":1.0,"annual_operating_hours":8000.0}
+    def calculate(self,inputs):
+        errors=self.validate_inputs(inputs)
+        if errors:return BlockResult({},errors=errors)
+        x=inputs["process_in"];p={**self.default_params,**self.params}
+        if x.temperature_C is None:return BlockResult({},errors=["Heat exchanger requires process inlet temperature."])
+        target=p["target_process_outlet_temperature_C"]; m=x.total_tph*1000/3600; q=m*p["process_cp_kJ_per_kgK"]*(target-x.temperature_C); duty=abs(q); heating=q>=0
+        us=p["utility_supply_temperature_C"];ur=p["utility_return_temperature_C"];udt=abs(us-ur)
+        if udt<=0 or p["utility_cp_kJ_per_kgK"]<=0 or p["overall_U_W_per_m2K"]<=0:return BlockResult({},errors=["Utility delta T, Cp and exchanger U must be positive."])
+        uf=duty/(p["utility_cp_kJ_per_kgK"]*udt)*3.6 if duty else 0
+        dt1=(us-target if heating else x.temperature_C-us);dt2=(ur-x.temperature_C if heating else target-ur)
+        if duty and (dt1<=0 or dt2<=0):return BlockResult({},errors=["Utility temperatures do not provide a valid exchanger driving force."])
+        lmtd=(dt1-dt2)/math.log(dt1/dt2) if duty and abs(dt1-dt2)>1e-9 else (dt1 if duty else 0)
+        area=duty*1000*(1+p["design_margin_fraction"])/(p["overall_U_W_per_m2K"]*lmtd) if duty and lmtd>0 else 0
+        out=x.copy(new_id=f"{self.id}:process_out");out.temperature_C=target
+        manual=max(0,p["manual_electrical_load_kW"]);elec=manual*max(0,p["electrical_load_factor_fraction"])
+        return BlockResult({"process_out":out},metrics={"process_inlet_C":x.temperature_C,"process_outlet_C":target,"process_flow_tph":x.total_tph,"duty_kW":duty,
+            "utility_supply_C":us,"utility_return_C":ur,"utility_flow_m3ph":uf,"LMTD_C":lmtd,"overall_U_W_per_m2K":p["overall_U_W_per_m2K"],"required_area_m2":area,
+            "annual_electricity_kWh":elec*p["annual_operating_hours"]},utilities=UtilityDemand(electricity_kW=elec,peak_electricity_kW=manual,thermal_kW=duty if heating else 0,cooling_kW=duty if not heating else 0),
+            equipment=[EquipmentRequirement(equipment_type="Heat exchanger",design_flow_tph=x.total_tph,design_duty_kW=duty,area_m2=area,motor_kW=manual)],
+            metadata=EngineeringMetadata(status="CALCULATED",basis="Q=mCpDT; utility flow from utility DT; area from U x LMTD",confidence="MEDIUM"))
 
 
 def _closure_error(inputs, outputs):
@@ -1707,7 +1714,7 @@ BLOCK_REGISTRY: Dict[str, Type[BaseBlock]] = {
     MixerBlock.type_name: MixerBlock,
     SplitterBlock.type_name: SplitterBlock,
     TankBlock.type_name: TankBlock,
-    HeatExchangerBlock.type_name: HeatExchangerBlock,
+    HeatExchangerBlock.type_name: HeatExchangerBlock,\n    HeatGeneratorBlock.type_name: HeatGeneratorBlock,
     PumpBlock.type_name: PumpBlock,
     HeaterCoolerBlock.type_name: HeaterCoolerBlock,
     ProductSinkBlock.type_name: ProductSinkBlock,
