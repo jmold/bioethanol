@@ -134,7 +134,7 @@ class SpreadsheetAlignmentTests(unittest.TestCase):
         result = Flowsheet(self.definition).run()
         for bid in ("beer","rect"):
             metrics=result["block_results"][bid]["metrics"]
-            shortcut=metrics.get("shortcut_design") or {}
+            shortcut=metrics.get("shortcut_distillation") or {}
             self.assertGreater(shortcut.get("internal_vapour_tph",0),0)
             self.assertGreaterEqual(shortcut.get("estimated_internal_liquid_tph",0),0)
             self.assertGreater(shortcut.get("distillate_tph",0),0)
