@@ -117,10 +117,9 @@ function TwinVessel({label,state,count,tone,level}:any){
 }
 
 function VesselBank({row,schedules}:any){
-  const sections=[['pretreat','P02 Pretreatment','#cb7a36'],['hydro','P04 Hydrolysis','#4c9a70'],['ferm','P05 Fermentation','#6779b8']]
-  return <div className="vessel-bank">{sections.map(([id,label,tone]:any)=>{
-    const schedule=(schedules||[]).find((v:any)=>v.block_id===id)||{}
-    const count=Number(schedule.installed_vessels||0)
+  return <div className="vessel-bank">{(schedules||[]).map((schedule:any,index:number)=>{
+    const id=String(schedule.block_id||'batch'),label=schedule.block_name||id,count=Number(schedule.installed_vessels||0)
+    const tones=['#cb7a36','#4c9a70','#6779b8','#68737b'];const tone=tones[index%tones.length]
     return <section key={id} className="vessel-bank-section"><div className="vessel-bank-head"><div><span>{label}</span><strong>{count} vessels · {fmt(schedule.vessel_working_volume_m3,0)} m³ working volume</strong></div><small>{fmt(schedule.utilisation_fraction*100,1)}% design utilisation</small></div><div className="vessel-bank-grid">
       {Array.from({length:count},(_,i)=>{const vid=`${id}-V${String(i+1).padStart(2,'0')}`;const state=row.vessel_state?.[vid]||'AVAILABLE';const frac=Number(row.vessel_fill_fraction?.[vid]||0);const mass=Number(row.vessel_inventory_t?.[vid]||0);const batches=row.vessel_batch_ids?.[vid]||[];return <article key={vid} className={`live-vessel-card state-${String(state).toLowerCase().replaceAll('_','-')}`} style={{'--vessel-tone':tone} as any}><div className="live-vessel-graphic"><i style={{height:`${Math.max(2,Math.min(100,frac*100))}%`}}/></div><div><span>{vid}</span><strong>{pretty(state)}</strong><small>{fmt(mass,1)} t · {fmt(frac*100,0)}%</small>{batches.length>0&&<em>{batches.join(' + ')}</em>}</div></article>})}
     </div></section>
@@ -195,10 +194,10 @@ function DigitalTwin({dynamic,results}:any){
   const Box=({title,sub,tone='#526170'}:any)=><div style={{minWidth:120,padding:'12px 10px',border:'1px solid #d3dde3',borderRadius:10,background:'#fff',textAlign:'center'}}><div style={{width:28,height:28,borderRadius:8,margin:'0 auto 7px',background:tone,opacity:.16}}/><strong style={{display:'block'}}>{title}</strong><span style={{fontSize:11,color:'#65727c'}}>{sub}</span></div>
   const Pipe=({active=false,label=''}:any)=><div className={`twin-pipe ${active?'flowing':''}`} style={{minWidth:54}}><i/>{label&&<b>{label}</b>}</div>
   return <div className="twin-view">
-    <div className="twin-toolbar"><div><span>V0.23 P01–P12 LIVE PLANT REPLAY</span><strong>Plant time {fmt(row.time_h||0,2)} h</strong></div><div className="twin-controls"><button onClick={()=>setPlaying(v=>!v)}>{playing?'Pause':'Play'}</button><button onClick={()=>setIndex(i=>Math.min(i+1,rows.length-1))}>Step</button><label>Speed <select value={speed} onChange={e=>setSpeed(Number(e.target.value))}><option value="1">1×</option><option value="4">4×</option><option value="12">12×</option><option value="32">32×</option></select></label></div></div>
+    <div className="twin-toolbar"><div><span>V0.24.7 CONFIGURED PLANT REPLAY</span><strong>Plant time {fmt(row.time_h||0,2)} h</strong></div><div className="twin-controls"><button onClick={()=>setPlaying(v=>!v)}>{playing?'Pause':'Play'}</button><button onClick={()=>setIndex(i=>Math.min(i+1,rows.length-1))}>Step</button><label>Speed <select value={speed} onChange={e=>setSpeed(Number(e.target.value))}><option value="1">1×</option><option value="4">4×</option><option value="12">12×</option><option value="32">32×</option></select></label></div></div>
     <input className="twin-scrubber" type="range" min="0" max={Math.max(0,rows.length-1)} value={index} onChange={e=>{setPlaying(false);setIndex(Number(e.target.value))}} aria-label="Digital twin time"/>
     <div style={{overflowX:'auto',padding:'8px 0 18px'}}><div style={{display:'flex',alignItems:'center',minWidth:1900,gap:4}}>
-      <div className="feed-hopper"><div className="hopper-bin"/><strong>P01 Miscanthus + water</strong><span>Feed preparation & slurry make-up</span></div>
+      <div className="feed-hopper"><div className="hopper-bin"/><strong>P01A Dry size reduction → P01B slurry make-up</strong><span>Process water added after dry preparation</span></div>
       <Pipe active={true} label="Feed pump"/>
       <TwinVessel label="P02 Pretreatment" state={state('pretreat')} level={averageLevel('pretreat')} count={`${pretreat.installed_vessels||0} × ${fmt(pretreat.vessel_working_volume_m3,0)} m³`} tone="#cb7a36"/>
       <Pipe active={transferActive('pretreat','hydro')} label="Hot discharge"/>
@@ -234,7 +233,7 @@ function SchedulerPage({dynamic,flow}:any){
   const op=dynamic.operability||{}
   const throughput=dynamic.connected_throughput||{}
   return <div className="scheduler-page">
-    <div className="page-hero"><div><span className="eyebrow">Connected operations scheduler</span><h2>Batch sequencing & plant operability</h2><p>Direct vessel-to-vessel scheduling for P02 Pretreatment, P04 Hydrolysis and P05 Fermentation, including transfer pumps, blocking and starvation.</p></div><div className={`rag-status ${dynamic.plant_feasible_at_selected_throughput?'good':'danger'}`}><i/>{dynamic.plant_feasible_at_selected_throughput?'CAPACITY FEASIBLE':'CAPACITY CONSTRAINT'}</div></div>
+    <div className="page-hero"><div><span className="eyebrow">Connected operations scheduler</span><h2>Batch sequencing & plant operability</h2><p>Direct vessel-to-vessel scheduling for the batch-capable sections in the configured flowsheet, including transfer pumps, blocking and starvation.</p></div><div className={`rag-status ${dynamic.plant_feasible_at_selected_throughput?'good':'danger'}`}><i/>{dynamic.plant_feasible_at_selected_throughput?'CAPACITY FEASIBLE':'CAPACITY CONSTRAINT'}</div></div>
     <div className="result-kpis operations-kpis">
       <div><span>Completed feed</span><strong>{fmt(throughput.average_completed_feed_tph,3)} <small>t/h</small></strong><p>End-to-end scheduled throughput</p></div>
       <div><span>Annual ethanol</span><strong>{fmt((throughput.ethanol_product_L_per_8000h_year||0)/1e6,2)} <small>ML/y</small></strong><p>Based on completed scheduled feed</p></div>
@@ -246,7 +245,7 @@ function SchedulerPage({dynamic,flow}:any){
     <section className="operations-section"><div className="section-heading"><div><span>Representative cycles</span><h3>Configured batch cycle</h3></div><p>Reference phase durations used by the event engine.</p></div><div className="timeline-list">{schedules.map((v:any)=><BatchTimeline key={v.block_id} schedule={v}/>)}</div></section>
     <section className="operations-section"><div className="section-heading"><div><span>Time-domain demand</span><h3>Utilities through the schedule</h3></div><p>{dynamic.horizon_h}-hour horizon · {dynamic.timestep_min}-minute timestep.</p></div><div className="series-grid"><MiniSeries rows={dynamic.timeline} valueKey="net_external_thermal_kW" label="Net external heat (kW)" color="#c46b2b"/><MiniSeries rows={dynamic.timeline} valueKey="electrical_kW" label="Electrical demand (kW)" color="#2e6f94"/><MiniSeries rows={dynamic.timeline} valueKey="used_heat_recovery_kW" label="Heat recovered (kW)" color="#3d8b5d"/><MiniSeries rows={dynamic.timeline} valueKey="cooling_kW" label="Cooling demand (kW)" color="#547fc1"/></div></section>
     <section className="operations-section"><div className="section-heading"><div><span>Operability log</span><h3>Recent transfer and batch events</h3></div><p>Useful for diagnosing blocking, starvation and transfer sequencing.</p></div><div className="event-table">{(dynamic.event_log||[]).slice(-40).reverse().map((e:any,i:number)=><div key={i}><span>{fmt(e.time_h,2)} h</span><strong>{pretty(e.event)}</strong><small>{e.vessel||[e.from,e.to].filter(Boolean).join(' → ')||''}</small></div>)}</div></section>
-    <p className="model-boundary"><strong>Scheduler boundary:</strong> no intermediate buffer vessels are assumed. P02 → P04 → P05 transfers are direct and event-resolved. P06 onward remains continuous process-screening logic.</p>
+    <p className="model-boundary"><strong>Scheduler boundary:</strong> no intermediate buffer vessels are assumed. Batch-capable sections are ordered from flowsheet topology and their transfers are direct and event-resolved; unscheduled downstream equipment remains continuous process-screening logic.</p>
   </div>
 }
 
