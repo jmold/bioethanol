@@ -111,7 +111,7 @@ class Flowsheet:
             temp=a.temperature_C
         elif b.temperature_C is not None:
             temp=b.temperature_C
-        return Stream(stream_id,comp,temperature_C=temp,pressure_bar_abs=a.pressure_bar_abs or b.pressure_bar_abs,note="P09 fresh feed plus converged P10 recycle")
+        return Stream(stream_id,comp,temperature_C=temp,pressure_bar_abs=a.pressure_bar_abs or b.pressure_bar_abs,note="Fresh feed plus converged internal recycle")
 
     def _solve_rectifier_sieve_recycle(self, rect_id: str, sieve_id: str, fresh_feed: Stream):
         rect_def=self.blocks[rect_id]; sieve_def=self.blocks[sieve_id]
@@ -155,9 +155,9 @@ class Flowsheet:
                 "recycle_converged":converged,
             })
             if converged:
-                sieve_result.metadata.note="P10 regeneration recycle is iteratively converged back to P09 on the workbook tear-stream basis."
+                sieve_result.metadata.note="Regeneration recycle is iteratively converged to its configured upstream receiver on the tear-stream basis."
             else:
-                sieve_result.warnings.append("P09/P10 recycle did not converge within the iteration limit.")
+                sieve_result.warnings.append("Configured internal recycle did not converge within the iteration limit.")
         return rect_result,sieve_result,converged
 
     def run(self):
@@ -184,8 +184,13 @@ class Flowsheet:
             bdef = self.blocks[bid]
             cls = BLOCK_REGISTRY[bdef.type]
 
-            if bdef.type=="rectifier" and "feed" in incoming_by_block[bid]:
-                sieve_connection=next((c for c in connections_from[bid] if c.from_port=="overhead" and self.blocks[c.to_block].type=="molecular_sieve"),None)
+            recycle_adapter=getattr(cls,"recycle_adapter",None)
+            if recycle_adapter=="dehydration_regeneration" and "feed" in incoming_by_block[bid]:
+                sieve_connection=next((
+                    c for c in connections_from[bid]
+                    if getattr(BLOCK_REGISTRY.get(self.blocks[c.to_block].type),"recycle_adapter",None)==recycle_adapter
+                    and "recycle_source" in getattr(BLOCK_REGISTRY.get(self.blocks[c.to_block].type),"capabilities",())
+                ),None)
                 if sieve_connection:
                     sieve_id=sieve_connection.to_block
                     sieve_params=self.blocks[sieve_id].params
