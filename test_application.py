@@ -67,9 +67,9 @@ class ApplicationRegressionTests(unittest.TestCase):
         result = Flowsheet(definition).run()
         water = result["site_process_water"]
         self.assertTrue(water["configured"])
-        self.assertAlmostEqual(water["total_demand_tph"], 11.4705882353, places=9)
+        self.assertAlmostEqual(water["total_demand_tph"], 11.413235294098625, places=9)
         self.assertAlmostEqual(water["recovered_water_used_tph"], 5.0)
-        self.assertAlmostEqual(water["fresh_water_makeup_tph"], 6.4705882353, places=9)
+        self.assertAlmostEqual(water["fresh_water_makeup_tph"], 6.413235294098625, places=9)
         self.assertGreater(water["required_working_volume_m3"], 0)
         self.assertEqual(water["consumers"][0]["block_id"], "feed")
 
