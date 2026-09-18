@@ -105,7 +105,7 @@ jobs:
         with:
           tagName: app-v__VERSION__
           releaseName: "BioAgri Process Simulator v__VERSION__"
-          releaseBody: "BioAgri Process Simulator V0.24.6 introduces stable standard-equipment catalogue metadata and a site Process Water Tank / Header. The tank aggregates calculated or manual consumer demand, credits recovered water, calculates fresh make-up, surplus and required working volume, and reports the site water balance without changing existing legacy block IDs."
+          releaseBody: "BioAgri Process Simulator V0.24.7 begins the modular flowsheet architecture: dry size reduction now precedes slurry make-up in the Miscanthus reference route, while the connected batch scheduler derives section order from flowsheet topology rather than fixed P-numbers, instance IDs, or a hard-coded pretreatment/hydrolysis/fermentation sequence."
           releaseDraft: false
           prerelease: false
           args: --bundles nsis
