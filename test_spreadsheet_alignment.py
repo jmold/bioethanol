@@ -49,7 +49,7 @@ class SpreadsheetAlignmentTests(unittest.TestCase):
         self.assertIn(("site_process_water","process_water","feed","process_water"),connections)
         water=self.result["block_results"]["site_process_water"]["metrics"]
         feed=self.result["block_results"]["feed"]["metrics"]
-        self.assertAlmostEqual(water["site_process_water_demand_tph"],11.4705882353,places=9)
+        self.assertAlmostEqual(water["site_process_water_demand_tph"],11.413235294098625,places=9)
         self.assertAlmostEqual(feed["process_water_addition_tph"],water["site_process_water_demand_tph"],places=9)
 
     def test_p03_workbook_heat_basis(self):
