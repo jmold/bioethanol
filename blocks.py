@@ -16,6 +16,7 @@ class BaseBlock:
     default_params: dict = {}
     capabilities: tuple[str, ...] = ("continuous_process",)
     schedule_adapter: str | None = None
+    recycle_adapter: str | None = None
 
     def __init__(self, block_id: str, params: dict | None = None):
         self.id = block_id
@@ -41,6 +42,7 @@ class BaseBlock:
             "model_role": model_role,
             "capabilities": list(self.capabilities),
             "schedule_adapter": self.schedule_adapter,
+            "recycle_adapter": self.recycle_adapter,
             "input_ports": {k: vars(v) for k,v in self.input_ports.items()},
             "output_ports": {k: vars(v) for k,v in self.output_ports.items()},
             "default_params": dict(self.default_params),
@@ -769,6 +771,7 @@ class BeerColumnBlock(BaseBlock):
 
 class RectifierBlock(BaseBlock):
     capabilities=("continuous_process","separation","distillation","thermal","recycle_receiver")
+    recycle_adapter="dehydration_regeneration"
     type_name = "rectifier"
     display_name = "Rectifier"
     input_ports = {
@@ -885,6 +888,7 @@ class RectifierBlock(BaseBlock):
 
 class MolecularSieveBlock(BaseBlock):
     capabilities=("continuous_process","separation","dehydration","recycle_source")
+    recycle_adapter="dehydration_regeneration"
     type_name = "molecular_sieve"
     display_name = "Molecular Sieve"
     input_ports = {
