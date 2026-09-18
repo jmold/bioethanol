@@ -167,7 +167,11 @@ def build_native_dynamic_simulation(definition: dict, results: dict, timestep_mi
         metrics = r.get("metrics") or {}
         required_tph = _equipment_design_flow(r)
 
-        if btype == "pretreatment":
+        adapter = getattr(block_cls, "schedule_adapter", None)
+        if not adapter:
+            raise ValueError(f"Batch-capable block '{bid}' ({btype}) has no schedule_adapter contract.")
+
+        if adapter == "pretreatment":
             volume = _safe_float(p.get("reactor_working_volume_m3"), 50.0)
             density = _safe_float(p.get("slurry_density_t_per_m3"), 1.0)
             batch_mass = volume * density
@@ -192,7 +196,7 @@ def build_native_dynamic_simulation(definition: dict, results: dict, timestep_mi
                 PhaseSpec("EMPTYING_HOT", empty_h, electricity_kW=empty_pump_kW),
                 PhaseSpec("CIP_TURNAROUND", cip_h),
             ]
-        elif btype == "hydrolysis":
+        elif adapter == "hydrolysis":
             volume = _safe_float(p.get("vessel_working_volume_m3"), 100.0)
             density = _safe_float(p.get("slurry_density_t_per_m3"), 1.0)
             batch_mass = volume * density
@@ -214,7 +218,7 @@ def build_native_dynamic_simulation(definition: dict, results: dict, timestep_mi
             kinetics[bid] = _kinetic_profile(
                 _safe_float(p.get("glucan_to_glucose_conversion_fraction"), 0.7674), react_h
             )
-        else:
+        elif adapter == "fermentation":
             volume = _safe_float(p.get("vessel_working_volume_m3"), 100.0)
             density = _safe_float(p.get("broth_density_t_per_m3"), 1.0)
             batch_mass = volume * density
@@ -238,6 +242,8 @@ def build_native_dynamic_simulation(definition: dict, results: dict, timestep_mi
             kinetics[bid] = _kinetic_profile(
                 _safe_float(p.get("fraction_theoretical_ethanol_yield"), 0.95), react_h
             )
+        else:
+            raise ValueError(f"Unsupported schedule_adapter '{adapter}' for batch block '{bid}'.")
 
         cycle_h = sum(max(0.0, ph.duration_h) for ph in phases)
         installed = _installed_count(p, r)
