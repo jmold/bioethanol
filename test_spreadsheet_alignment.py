@@ -139,6 +139,12 @@ class SpreadsheetAlignmentTests(unittest.TestCase):
             self.assertGreaterEqual(shortcut.get("estimated_internal_liquid_tph",0),0)
             self.assertGreater(shortcut.get("distillate_tph",0),0)
 
+    def test_distillation_design_summary_is_supplier_facing_and_generic(self):
+        summary=self.result["distillation_design_summary"]
+        self.assertEqual([x["block_id"] for x in summary["columns"]],["beer","rect"])
+        self.assertTrue(all(x["internal_vapour_tph"]>0 for x in summary["columns"]))
+        self.assertIn("turndown and startup requirements",summary["next_vendor_inputs"])
+
     def test_distillation_shortcut_preserves_workbook_product_basis(self):
         sieve=self.result["block_results"]["sieve"]["metrics"]
         ethanol_lph=sieve["ethanol_product_tph"]*1000/0.78937
