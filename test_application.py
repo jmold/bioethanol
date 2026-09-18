@@ -85,6 +85,7 @@ class ApplicationRegressionTests(unittest.TestCase):
     def test_block_capabilities_are_exposed_for_generic_engine_consumers(self):
         from blocks import PretreatmentBlock, BeerColumnBlock, ProductSinkBlock
         self.assertIn("batch_process", PretreatmentBlock("x").schema()["capabilities"])
+        self.assertEqual(PretreatmentBlock("x").schema()["schedule_adapter"],"pretreatment")
         self.assertIn("distillation", BeerColumnBlock("x").schema()["capabilities"])
         self.assertIn("sink", ProductSinkBlock("x").schema()["capabilities"])
 
