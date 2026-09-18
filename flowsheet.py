@@ -559,7 +559,6 @@ class Flowsheet:
             if cls is None or "distillation" not in getattr(cls,"capabilities",()):
                 continue
             sc=res.metrics.get("shortcut_distillation") or {}
-            feed=next((s for key,s in self.streams.items() if key.startswith(f"{bid}.") and False),None)
             rows.append({
                 "block_id":bid,
                 "block_name":block.name,
