@@ -15,7 +15,8 @@ class SpreadsheetAlignmentTests(unittest.TestCase):
 
     def test_p01_to_p12_reference_structure(self):
         names={b["id"]:b["name"] for b in self.definition["blocks"]}
-        self.assertTrue(names["feed"].startswith("P01"))
+        self.assertTrue(names["macerator"].startswith("P01A"))
+        self.assertTrue(names["feed"].startswith("P01B"))
         self.assertTrue(names["pretreat"].startswith("P02"))
         self.assertTrue(names["pretreat_heat_recovery"].startswith("P03"))
         self.assertTrue(names["hydro"].startswith("P04"))
@@ -34,6 +35,14 @@ class SpreadsheetAlignmentTests(unittest.TestCase):
         self.assertIn(("pretreat","pretreat_heat_recovery"),pairs)
         self.assertIn(("pretreat_heat_recovery","hydro"),pairs)
         self.assertNotIn(("pretreat","hydro"),pairs)
+
+    def test_dry_size_reduction_precedes_slurry_makeup(self):
+        connections={(c["from_block"],c["to_block"]) for c in self.definition["connections"]}
+        self.assertIn(("raw_feed","macerator"),connections)
+        self.assertIn(("macerator","feed"),connections)
+        self.assertIn(("feed","feed_transfer_pump"),connections)
+        self.assertNotIn(("raw_feed","feed"),connections)
+        self.assertNotIn(("feed","macerator"),connections)
 
     def test_feed_process_water_is_an_explicit_stream(self):
         connections={(c["from_block"],c["from_port"],c["to_block"],c["to_port"]) for c in self.definition["connections"]}
