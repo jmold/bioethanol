@@ -55,10 +55,27 @@ class Vessel:
     state_time_h: dict[str,float]=field(default_factory=dict)
 
 
-def _section_specs(legacy:dict)->list[dict]:
-    rows=[dict(x) for x in legacy.get("vessel_schedules",[]) if x.get("block_type") in {"pretreatment","hydrolysis","fermentation"}]
-    order={"pretreatment":0,"hydrolysis":1,"fermentation":2}
-    return sorted(rows,key=lambda x:order[x["block_type"]])
+def _section_specs(legacy:dict, definition:dict)->list[dict]:
+    """Return schedulable vessel sections in flowsheet-topology order.
+
+    The connected scheduler deliberately does not know P-numbers, instance IDs,
+    or a fixed pretreatment/hydrolysis/fermentation sequence. Native schedule
+    producers decide which blocks are batch-capable; connections decide order.
+    """
+    rows=[dict(x) for x in legacy.get("vessel_schedules",[])]
+    if not rows:
+        return []
+    block_ids=[b.get("id") for b in definition.get("blocks",[]) if b.get("id")]
+    rank={bid:0 for bid in block_ids}
+    edges=[(x.get("from_block"),x.get("to_block")) for x in definition.get("connections",[])]
+    for _ in range(len(block_ids)):
+        changed=False
+        for src,dst in edges:
+            if src in rank and dst in rank and rank[dst] < rank[src]+1:
+                rank[dst]=rank[src]+1; changed=True
+        if not changed:
+            break
+    return sorted(rows,key=lambda x:(rank.get(x.get("block_id"),0),x.get("block_id","")))
 
 
 def _duration(schedule:dict,name:str)->float:
@@ -68,9 +85,12 @@ def _duration(schedule:dict,name:str)->float:
     return 0.0
 
 
+def _processing_phases(schedule:dict)->list[dict]:
+    excluded={"FILLING","EMPTYING","EMPTYING_HOT","CIP_TURNAROUND","AVAILABLE"}
+    return [p for p in schedule.get("phases",[]) if p.get("name") not in excluded]
+
 def _processing_duration(schedule:dict)->float:
-    names={"pretreatment":("HEATING_PRETREATMENT","REACTION_HOLD"),"hydrolysis":("ENZYMATIC_HYDROLYSIS",),"fermentation":("FERMENTATION",)}[schedule["block_type"]]
-    return sum(_duration(schedule,n) for n in names)
+    return sum(max(0.0,_f(p.get("duration_h"))) for p in _processing_phases(schedule))
 
 
 def _cip_duration(schedule:dict)->float:
@@ -84,8 +104,9 @@ def _ethanol_ratio(results:dict,first:dict)->float:
 
 
 def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min:int=15,horizon_h:float=168.0)->dict:
-    """V0.23.0 direct-transfer connected plant scheduler aligned to the P01-P12 reference route.
+    """Topology-driven direct-transfer scheduler for configured batch-capable blocks.
 
+    No P-number, block instance ID, or fixed process sequence is assumed.
     No intermediate buffer vessels are assumed. Upstream vessels may only
     discharge directly into an available downstream process vessel. If the
     downstream vessel is smaller than the transferred batch or unavailable,
@@ -94,21 +115,22 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
     arrive to reach its configured working batch mass.
     """
     legacy=build_native_dynamic_simulation(definition,results,timestep_min=timestep_min,horizon_h=horizon_h)
-    sections=_section_specs(legacy)
-    if len(sections)<3:
+    sections=_section_specs(legacy,definition)
+    if len(sections)<2:
         out=dict(legacy)
         out.update({"engine":"Bio-Agri direct-transfer dynamic plant engine","engine_version":"0.23.0","connected_material_transfers":False})
         return out
 
-    pt,hy,fe=sections[:3]
-    schedule_by_type={s["block_type"]:s for s in sections[:3]}
+    first,last=sections[0],sections[-1]
+    schedule_by_id={s["block_id"]:s for s in sections}
+    next_section={sections[i]["block_id"]:sections[i+1]["block_id"] for i in range(len(sections)-1)}
     vessels=[]
-    for sec in sections[:3]:
+    for sec in sections:
         for i in range(int(sec["installed_vessels"])):
             vessels.append(Vessel(f'{sec["block_id"]}-V{i+1:02d}',sec["block_id"],sec["block_type"],_f(sec["batch_mass_t"])))
 
     pumps={}
-    for sec in sections[:3]:
+    for sec in sections:
         pumps[f'{sec["block_id"]}_in']=PumpResource(f'{sec["block_id"]}_in',f'{sec["block_name"]} inlet transfer pump')
         pumps[f'{sec["block_id"]}_out']=PumpResource(f'{sec["block_id"]}_out',f'{sec["block_name"]} outlet transfer pump')
 
@@ -126,11 +148,12 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
         v.pending_action=action
 
     def process_state(v):
-        return {"pretreatment":"HEATING_PRETREATMENT","hydrolysis":"ENZYMATIC_HYDROLYSIS","fermentation":"FERMENTATION"}[v.section_type]
+        phases=_processing_phases(schedule_by_id[v.section_id])
+        return phases[0]["name"] if phases else "PROCESSING"
 
     def maybe_start_processing(v,now):
         if v.batch_mass_t+1e-9 >= v.batch_capacity_t:
-            set_state(v,process_state(v),now,_processing_duration(schedule_by_type[v.section_type]),"PROCESS_COMPLETE")
+            set_state(v,process_state(v),now,_processing_duration(schedule_by_id[v.section_id]),"PROCESS_COMPLETE")
             events.append({"time_h":now,"event":"BATCH_READY","vessel":v.vessel_id,"mass_t":v.batch_mass_t})
         else:
             set_state(v,"WAITING_FOR_FEED",now)
@@ -153,25 +176,25 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
             src.batch_mass_t=0.0;src.source_feed_equivalent_t=0.0
             src.batch_ids=[]
             src.transfer_source_id=None
-            set_state(src,"CIP_TURNAROUND",now,_cip_duration(schedule_by_type[src.section_type]),"CIP_COMPLETE")
+            set_state(src,"CIP_TURNAROUND",now,_cip_duration(schedule_by_id[src.section_id]),"CIP_COMPLETE")
             v.transfer_source_id=None
             maybe_start_processing(v,now)
         elif v.pending_action=="FINAL_EMPTY_COMPLETE":
             completed_source_feed += v.source_feed_equivalent_t
             events.append({"time_h":now,"event":"FINAL_DISCHARGE_COMPLETE","vessel":v.vessel_id,"mass_t":v.batch_mass_t,"batch_ids":list(v.batch_ids)})
             v.batch_mass_t=0.0;v.source_feed_equivalent_t=0.0;v.batch_ids=[]
-            set_state(v,"CIP_TURNAROUND",now,_cip_duration(schedule_by_type[v.section_type]),"CIP_COMPLETE")
+            set_state(v,"CIP_TURNAROUND",now,_cip_duration(schedule_by_id[v.section_id]),"CIP_COMPLETE")
         elif v.pending_action=="CIP_COMPLETE":
             v.completed_batches+=1
             set_state(v,"AVAILABLE",now)
 
     def try_source_fill(v,now):
         nonlocal source_feed_started,batch_sequence
-        if v.section_type!="pretreatment" or v.state!="AVAILABLE":return False
+        if v.section_id!=first["block_id"] or v.state!="AVAILABLE":return False
         pump=pumps[f'{v.section_id}_in']
         if not pump.available(now):
             pump.contention_count+=1;return False
-        dur=_f(schedule_by_type[v.section_type].get("fill_time_h"))
+        dur=_f(schedule_by_id[v.section_id].get("fill_time_h"))
         pump.reserve(now,dur,v.vessel_id)
         batch_sequence += 1
         v.batch_ids=[f"B{batch_sequence:05d}"]
@@ -183,25 +206,25 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
         events.append({"time_h":now,"event":"SOURCE_FILL_START","vessel":v.vessel_id,"mass_t":v.batch_capacity_t,"batch_ids":list(v.batch_ids)})
         return True
 
-    def downstream_candidates(section_type):
-        next_type={"pretreatment":"hydrolysis","hydrolysis":"fermentation"}.get(section_type)
-        if not next_type:return []
-        return [v for v in vessels if v.section_type==next_type and v.state in {"AVAILABLE","WAITING_FOR_FEED","STARVED"}]
+    def downstream_candidates(section_id):
+        target=next_section.get(section_id)
+        if not target:return []
+        return [v for v in vessels if v.section_id==target and v.state in {"AVAILABLE","WAITING_FOR_FEED","STARVED"}]
 
     def try_direct_transfer(src,now):
         nonlocal blocking_events
         if src.state not in {"WAITING_FOR_DESTINATION","BLOCKED"}:return False
-        if src.section_type=="fermentation":
+        if src.section_id==last["block_id"]:
             pump=pumps[f'{src.section_id}_out']
             if not pump.available(now):
                 pump.contention_count+=1;return False
-            dur=_f(schedule_by_type[src.section_type].get("empty_time_h"))
+            dur=_f(schedule_by_id[src.section_id].get("empty_time_h"))
             pump.reserve(now,dur,src.vessel_id)
             set_state(src,"EMPTYING",now,dur,"FINAL_EMPTY_COMPLETE")
             events.append({"time_h":now,"event":"FINAL_DISCHARGE_START","vessel":src.vessel_id,"mass_t":src.batch_mass_t})
             return True
 
-        candidates=downstream_candidates(src.section_type)
+        candidates=downstream_candidates(src.section_id)
         dest=None
         for d in candidates:
             remaining=d.batch_capacity_t-d.batch_mass_t
@@ -218,8 +241,8 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
             if not inp.available(now):inp.contention_count+=1
             return False
 
-        out_rate=_f(schedule_by_type[src.section_type].get("outlet_transfer_pump_rate_m3ph"))
-        in_rate=_f(schedule_by_type[dest.section_type].get("inlet_transfer_pump_rate_m3ph"))
+        out_rate=_f(schedule_by_id[src.section_id].get("outlet_transfer_pump_rate_m3ph"))
+        in_rate=_f(schedule_by_id[dest.section_id].get("inlet_transfer_pump_rate_m3ph"))
         mass=src.batch_mass_t
         dur=max(mass/max(out_rate,1e-9),mass/max(in_rate,1e-9))
         outp.reserve(now,dur,src.vessel_id);inp.reserve(now,dur,dest.vessel_id)
@@ -247,14 +270,14 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
     while t<horizon-1e-9:
         for v in vessels: complete_due(v,t)
 
-        for typ in ("fermentation","hydrolysis","pretreatment"):
+        for sec in reversed(sections):
             for v in vessels:
-                if v.section_type==typ: try_direct_transfer(v,t)
+                if v.section_id==sec["block_id"]: try_direct_transfer(v,t)
 
         for v in vessels: try_source_fill(v,t)
 
         for v in vessels:
-            if v.section_type!="pretreatment" and v.state=="AVAILABLE":
+            if v.section_id!=first["block_id"] and v.state=="AVAILABLE":
                 v.state="STARVED"
                 starvation_events+=1
             v.state_time_h[v.state]=v.state_time_h.get(v.state,0.0)+dt
@@ -265,7 +288,7 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
                 active_transfers.append({"from":v.transfer_source_id,"to":v.vessel_id,"batch_ids":list(v.batch_ids)})
         timeline.append({
             "time_h":round(t,6),
-            "states":{sec["block_id"]:[v.state for v in vessels if v.section_id==sec["block_id"]] for sec in sections[:3]},
+            "states":{sec["block_id"]:[v.state for v in vessels if v.section_id==sec["block_id"]] for sec in sections},
             "vessel_state":{v.vessel_id:v.state for v in vessels},
             "vessel_inventory_t":{v.vessel_id:display_inventory(v,t) for v in vessels},
             "vessel_fill_fraction":{v.vessel_id:(display_inventory(v,t)/v.batch_capacity_t if v.batch_capacity_t>0 else 0.0) for v in vessels},
@@ -277,7 +300,7 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
         })
         t+=dt
 
-    ratio=_ethanol_ratio(results,pt)
+    ratio=_ethanol_ratio(results,first)
     ethanol_t=completed_source_feed*ratio
     feed_tph=completed_source_feed/horizon
     ethanol_tph=ethanol_t/horizon
@@ -313,7 +336,7 @@ def build_connected_dynamic_simulation(definition:dict,results:dict,timestep_min
         "status":"V0.23 DIRECT VESSEL-TO-VESSEL DIGITAL TWIN",
         "notes":list(legacy.get("notes",[]))+[
             "No intermediate buffer vessels are assumed by V0.23.",
-            "Pretreatment transfers directly into hydrolysis vessels; hydrolysis transfers directly into fermentation vessels.",
+            "Configured batch-capable sections transfer in flowsheet-topology order; no process names or P-numbers are hard-coded.",
             "Downstream vessels may accumulate partial direct fills where upstream and downstream batch sizes differ.",
             "An upstream vessel remains BLOCKED until a downstream vessel has sufficient free capacity.",
             "Reaction chemistry remains steady-state while V0.23 extends the connected operational timeline for the Digital Twin and Scheduler.",
