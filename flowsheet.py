@@ -303,12 +303,29 @@ class Flowsheet:
                 out["recycle_tph"] += res.metrics.get("recycle_tph",0.0)
         return out
 
+    def _is_terminal_block(self, block_id: str) -> bool:
+        block=self.blocks.get(block_id)
+        if block is None:
+            return False
+        cls=BLOCK_REGISTRY.get(block.type)
+        return cls is not None and "sink" in getattr(cls,"capabilities",())
+
+    def _is_internal_recycle_terminal(self, block_id: str) -> bool:
+        block=self.blocks.get(block_id)
+        if block is None:
+            return False
+        cls=BLOCK_REGISTRY.get(block.type)
+        return (
+            cls is not None
+            and "recycle_sink" in getattr(cls,"capabilities",())
+            and bool(block.params.get("internal_recycle",False))
+        )
+
     def _component_terminal_totals(self):
         totals={}
-        terminal_types={"product_sink","wastewater_sink","vent_sink","solid_sink","recycle_sink"}
         for c in self.connections:
-            if self.blocks.get(c.to_block) and self.blocks[c.to_block].type in terminal_types:
-                if self.blocks[c.to_block].type=="recycle_sink" and self.blocks[c.to_block].params.get("internal_recycle",False):
+            if self._is_terminal_block(c.to_block):
+                if self._is_internal_recycle_terminal(c.to_block):
                     continue
                 s=self.streams.get(f"{c.from_block}.{c.from_port}")
                 if not s: continue
@@ -324,19 +341,20 @@ class Flowsheet:
         sources = {}
         for bid,res in self.results.items():
             for port,s in res.outputs.items():
-                # Source streams are outputs from zero-input blocks only.
                 block = self.blocks[bid]
                 cls = BLOCK_REGISTRY[block.type]
-                if not getattr(cls, "input_ports", {}):
+                capabilities=getattr(cls,"capabilities",())
+                # Prefer the explicit source contract; retain zero-input fallback for
+                # legacy configured source blocks while they are migrated.
+                if "source" in capabilities or not getattr(cls,"input_ports",{}):
                     sources[f"{bid}.{port}"] = s
         return sources
 
     def _terminal_stream_objects(self):
-        terminal_types={"product_sink","wastewater_sink","vent_sink","solid_sink","recycle_sink"}
         terms={}
         for c in self.connections:
-            if self.blocks.get(c.to_block) and self.blocks[c.to_block].type in terminal_types:
-                if self.blocks[c.to_block].type=="recycle_sink" and self.blocks[c.to_block].params.get("internal_recycle",False):
+            if self._is_terminal_block(c.to_block):
+                if self._is_internal_recycle_terminal(c.to_block):
                     continue
                 s=self.streams.get(f"{c.from_block}.{c.from_port}")
                 if s:
