@@ -198,6 +198,8 @@ function DigitalTwin({dynamic,results}:any){
   for(let n=0;n<Object.keys(blocks).length;n++){let changed=false;connections.forEach((x:any)=>{if(rank[x.from_block]===undefined||isSink(x.to_block))return;const nr=rank[x.from_block]+1;if(rank[x.to_block]===undefined||nr>rank[x.to_block]){rank[x.to_block]=nr;changed=true}});if(!changed)break}
   const mainPath=Object.keys(rank).filter(id=>!isSink(id)).sort((a,b)=>(rank[a]-rank[b])||String(blocks[a]?.name||a).localeCompare(String(blocks[b]?.name||b)))
   const transferActive=(from:string,to:string)=>Object.entries(row.pump_owner||{}).some(([pump,owner]:any)=>(pump.startsWith(from+'_out')||pump.startsWith(to+'_in'))&&owner)
+  const Box=({title,sub,tone='#526170'}:any)=><div style={{minWidth:120,padding:'12px 10px',border:'1px solid #d3dde3',borderRadius:10,background:'#fff',textAlign:'center'}}><div style={{width:28,height:28,borderRadius:8,margin:'0 auto 7px',background:tone,opacity:.16}}/><strong style={{display:'block'}}>{title}</strong><span style={{fontSize:11,color:'#65727c'}}>{sub}</span></div>
+  const Pipe=({active=false,label=''}:any)=><div className={`twin-pipe ${active?'flowing':''}`} style={{minWidth:54}}><i/>{label&&<b>{label}</b>}</div>
   const node=(id:string)=>{
     const b=blocks[id]||{}, sc=schedule(id), bcaps=caps(id), metrics=results?.block_results?.[id]?.metrics||{}
     const sub=bcaps.includes('distillation')?`${metrics.actual_trays||'—'} trays · reflux ${fmt(metrics.molar_reflux_ratio||0,1)}`:bcaps.includes('batch_process')?`${sc?.installed_vessels||0} × ${fmt(sc?.vessel_working_volume_m3||0,0)} m³`:bcaps.includes('source')?'Configured source':bcaps.includes('sink')?'Terminal stream':b.type||''
@@ -206,13 +208,11 @@ function DigitalTwin({dynamic,results}:any){
     return <Box key={id} title={b.name||id} sub={sub}/>
   }
   const throughput=dynamic?.connected_throughput||{},op=dynamic?.operability||{}
-  const Box=({title,sub,tone='#526170'}:any)=><div style={{minWidth:120,padding:'12px 10px',border:'1px solid #d3dde3',borderRadius:10,background:'#fff',textAlign:'center'}}><div style={{width:28,height:28,borderRadius:8,margin:'0 auto 7px',background:tone,opacity:.16}}/><strong style={{display:'block'}}>{title}</strong><span style={{fontSize:11,color:'#65727c'}}>{sub}</span></div>
-  const Pipe=({active=false,label=''}:any)=><div className={`twin-pipe ${active?'flowing':''}`} style={{minWidth:54}}><i/>{label&&<b>{label}</b>}</div>
   return <div className="twin-view">
     <div className="twin-toolbar"><div><span>CONFIGURED FLOWSHEET REPLAY</span><strong>Plant time {fmt(row.time_h||0,2)} h</strong></div><div className="twin-controls"><button onClick={()=>setPlaying(v=>!v)}>{playing?'Pause':'Play'}</button><button onClick={()=>setIndex(i=>Math.min(i+1,rows.length-1))}>Step</button><label>Speed <select value={speed} onChange={e=>setSpeed(Number(e.target.value))}><option value="1">1×</option><option value="4">4×</option><option value="12">12×</option><option value="32">32×</option></select></label></div></div>
     <input className="twin-scrubber" type="range" min="0" max={Math.max(0,rows.length-1)} value={index} onChange={e=>{setPlaying(false);setIndex(Number(e.target.value))}} aria-label="Digital twin time"/>
     <div style={{overflowX:'auto',padding:'8px 0 18px'}}><div style={{display:'flex',alignItems:'center',minWidth:Math.max(900,mainPath.length*180),gap:4}}>
-      {mainPath.map((id,i)=><React.Fragment key={id}>{i>0&&<Pipe active={transferActive(mainPath[i-1],id)||true}/>} {node(id)}</React.Fragment>)}
+      {mainPath.map((id,i)=><React.Fragment key={id}>{i>0&&<Pipe active={transferActive(mainPath[i-1],id)}/>} {node(id)}</React.Fragment>)}
     </div></div>
     <div className="twin-readouts"><div><span>Completed feed</span><strong>{fmt(throughput.average_completed_feed_tph,2)} t/h</strong></div><div><span>Annual ethanol</span><strong>{fmt((throughput.ethanol_product_L_per_8000h_year||0)/1e6,2)} ML/y</strong></div><div><span>Blocked events</span><strong>{op.blocking_events||0}</strong></div><div><span>Pump contention</span><strong>{op.pump_contention_events||0}</strong></div></div>
     <section className="twin-live-section"><div className="section-heading"><div><span>Live batch vessels</span><h3>Individual vessel inventory & state</h3></div><p>Levels, states and batch lineage are taken directly from the connected event timeline.</p></div><VesselBank row={row} schedules={schedules}/></section>
