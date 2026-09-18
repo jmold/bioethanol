@@ -130,6 +130,15 @@ class SpreadsheetAlignmentTests(unittest.TestCase):
         self.assertGreater(p09["reboiler_kW"],0.0)
         self.assertGreater(p09["condenser_kW"],0.0)
 
+    def test_distillation_shortcut_exposes_internal_design_traffic(self):
+        result = Flowsheet(self.definition).run()
+        for bid in ("beer","rect"):
+            metrics=result["block_results"][bid]["metrics"]
+            shortcut=metrics.get("shortcut_design") or {}
+            self.assertGreater(shortcut.get("internal_vapour_tph",0),0)
+            self.assertGreaterEqual(shortcut.get("estimated_internal_liquid_tph",0),0)
+            self.assertGreater(shortcut.get("distillate_tph",0),0)
+
     def test_distillation_shortcut_preserves_workbook_product_basis(self):
         sieve=self.result["block_results"]["sieve"]["metrics"]
         ethanol_lph=sieve["ethanol_product_tph"]*1000/0.78937
