@@ -183,47 +183,41 @@ function DigitalTwin({dynamic,results}:any){
   useEffect(()=>setIndex(0),[rows])
   const row=rows[Math.min(index,Math.max(0,rows.length-1))]||{}
   const schedules=dynamic?.vessel_schedules||[]
-  const schedule=(id:string)=>schedules.find((v:any)=>v.block_id===id)||{}
+  const blocks=results?.blocks||{}
+  const connections=results?.connections||[]
   const states=(id:string)=>row.states?.[id]||[]
   const state=(id:string)=>states(id).find((s:string)=>s!=='AVAILABLE'&&s!=='STARVED')||states(id)[0]||'AVAILABLE'
   const averageLevel=(id:string)=>{const vals=Object.entries(row.vessel_fill_fraction||{}).filter(([k])=>k.startsWith(`${id}-`)).map(([,v]:any)=>Number(v||0));return vals.length?Math.max(8,Math.min(92,(vals.reduce((a,b)=>a+b,0)/vals.length)*84+8)):8}
-  const transferActive=(from:string,to:string)=>Object.entries(row.pump_owner||{}).some(([pump,owner]:any)=>pump.startsWith(from+'_out')&&owner)||Object.entries(row.pump_owner||{}).some(([pump,owner]:any)=>pump.startsWith(to+'_in')&&owner)
-  const pretreat=schedule('pretreat'),hydro=schedule('hydro'),ferm=schedule('ferm')
-  const throughput=dynamic?.connected_throughput||{}
-  const op=dynamic?.operability||{}
+  const schedule=(id:string)=>schedules.find((v:any)=>v.block_id===id)
+  const caps=(id:string)=>blocks[id]?.capabilities||[]
+  const isSink=(id:string)=>caps(id).includes('sink')
+  const isSource=(id:string)=>caps(id).includes('source')
+  const outgoing=(id:string)=>connections.filter((x:any)=>x.from_block===id&&!isSink(x.to_block))
+  const sources=Object.keys(blocks).filter(id=>isSource(id)&&outgoing(id).length)
+  const rank:any={}; sources.forEach(id=>rank[id]=0)
+  for(let n=0;n<Object.keys(blocks).length;n++){let changed=false;connections.forEach((x:any)=>{if(rank[x.from_block]===undefined||isSink(x.to_block))return;const nr=rank[x.from_block]+1;if(rank[x.to_block]===undefined||nr>rank[x.to_block]){rank[x.to_block]=nr;changed=true}});if(!changed)break}
+  const mainPath=Object.keys(rank).filter(id=>!isSink(id)).sort((a,b)=>(rank[a]-rank[b])||String(blocks[a]?.name||a).localeCompare(String(blocks[b]?.name||b)))
+  const transferActive=(from:string,to:string)=>Object.entries(row.pump_owner||{}).some(([pump,owner]:any)=>(pump.startsWith(from+'_out')||pump.startsWith(to+'_in'))&&owner)
+  const node=(id:string)=>{
+    const b=blocks[id]||{}, sc=schedule(id), bcaps=caps(id), metrics=results?.block_results?.[id]?.metrics||{}
+    const sub=bcaps.includes('distillation')?`${metrics.actual_trays||'—'} trays · reflux ${fmt(metrics.molar_reflux_ratio||0,1)}`:bcaps.includes('batch_process')?`${sc?.installed_vessels||0} × ${fmt(sc?.vessel_working_volume_m3||0,0)} m³`:bcaps.includes('source')?'Configured source':bcaps.includes('sink')?'Terminal stream':b.type||''
+    if(sc)return <TwinVessel key={id} label={b.name||id} state={state(id)} level={averageLevel(id)} count={sub} tone="#526170"/>
+    if(bcaps.includes('distillation'))return <div key={id} className="twin-column"><div className="column-stack"><i/><i/><i/><i/><i/></div><strong>{b.name||id}</strong><span>{sub}</span></div>
+    return <Box key={id} title={b.name||id} sub={sub}/>
+  }
+  const throughput=dynamic?.connected_throughput||{},op=dynamic?.operability||{}
   const Box=({title,sub,tone='#526170'}:any)=><div style={{minWidth:120,padding:'12px 10px',border:'1px solid #d3dde3',borderRadius:10,background:'#fff',textAlign:'center'}}><div style={{width:28,height:28,borderRadius:8,margin:'0 auto 7px',background:tone,opacity:.16}}/><strong style={{display:'block'}}>{title}</strong><span style={{fontSize:11,color:'#65727c'}}>{sub}</span></div>
   const Pipe=({active=false,label=''}:any)=><div className={`twin-pipe ${active?'flowing':''}`} style={{minWidth:54}}><i/>{label&&<b>{label}</b>}</div>
   return <div className="twin-view">
-    <div className="twin-toolbar"><div><span>V0.24.7 CONFIGURED PLANT REPLAY</span><strong>Plant time {fmt(row.time_h||0,2)} h</strong></div><div className="twin-controls"><button onClick={()=>setPlaying(v=>!v)}>{playing?'Pause':'Play'}</button><button onClick={()=>setIndex(i=>Math.min(i+1,rows.length-1))}>Step</button><label>Speed <select value={speed} onChange={e=>setSpeed(Number(e.target.value))}><option value="1">1×</option><option value="4">4×</option><option value="12">12×</option><option value="32">32×</option></select></label></div></div>
+    <div className="twin-toolbar"><div><span>CONFIGURED FLOWSHEET REPLAY</span><strong>Plant time {fmt(row.time_h||0,2)} h</strong></div><div className="twin-controls"><button onClick={()=>setPlaying(v=>!v)}>{playing?'Pause':'Play'}</button><button onClick={()=>setIndex(i=>Math.min(i+1,rows.length-1))}>Step</button><label>Speed <select value={speed} onChange={e=>setSpeed(Number(e.target.value))}><option value="1">1×</option><option value="4">4×</option><option value="12">12×</option><option value="32">32×</option></select></label></div></div>
     <input className="twin-scrubber" type="range" min="0" max={Math.max(0,rows.length-1)} value={index} onChange={e=>{setPlaying(false);setIndex(Number(e.target.value))}} aria-label="Digital twin time"/>
-    <div style={{overflowX:'auto',padding:'8px 0 18px'}}><div style={{display:'flex',alignItems:'center',minWidth:1900,gap:4}}>
-      <div className="feed-hopper"><div className="hopper-bin"/><strong>P01A Dry size reduction → P01B slurry make-up</strong><span>Process water added after dry preparation</span></div>
-      <Pipe active={true} label="Feed pump"/>
-      <TwinVessel label="P02 Pretreatment" state={state('pretreat')} level={averageLevel('pretreat')} count={`${pretreat.installed_vessels||0} × ${fmt(pretreat.vessel_working_volume_m3,0)} m³`} tone="#cb7a36"/>
-      <Pipe active={transferActive('pretreat','hydro')} label="Hot discharge"/>
-      <Box title="P03 Heat recovery" sub="180°C → 50°C · heat returned to cold feed" tone="#cb7a36"/>
-      <Pipe active={transferActive('pretreat','hydro')} label="To P04"/>
-      <TwinVessel label="P04 Hydrolysis" state={state('hydro')} level={averageLevel('hydro')} count={`${hydro.installed_vessels||0} × ${fmt(hydro.vessel_working_volume_m3,0)} m³`} tone="#4c9a70"/>
-      <Pipe active={transferActive('hydro','ferm')} label="Direct transfer"/>
-      <TwinVessel label="P05 Fermentation" state={state('ferm')} level={averageLevel('ferm')} count={`${ferm.installed_vessels||0} × ${fmt(ferm.vessel_working_volume_m3,0)} m³`} tone="#6779b8"/>
-      <Pipe active={true}/><Box title="P06 Solids separation" sub="Post-fermentation cake + beer" tone="#68737b"/><Pipe active={true}/><Box title="P07 Beer conditioning" sub="32→90°C · bottoms economiser" tone="#c46b2b"/><Pipe active={true}/>
-      <div className="twin-column"><div className="column-stack"><i/><i/><i/><i/><i/></div><strong>P08 Beer column</strong><span>32 trays · 40 wt% side draw</span></div>
-      <Pipe active={true}/><div className="twin-column"><div className="column-stack"><i/><i/><i/><i/><i/></div><strong>P09 Rectification</strong><span>45 trays · 92.5 wt% overhead</span></div>
-      <Pipe active={true}/><Box title="P10 Molecular sieve" sub="3A · 99.5 wt% · recycle to P09 tray 14" tone="#547fc1"/><Pipe active={true}/><Box title="P12 Utilities" sub="Integrated heat / steam / cooling" tone="#c46b2b"/><Pipe active={true}/>
-      <div className="twin-product"><div>EtOH</div><strong>P11 Anhydrous ethanol</strong><span>{fmt(results?.terminal_component_totals?.ethanol,3)} t/h</span></div>
+    <div style={{overflowX:'auto',padding:'8px 0 18px'}}><div style={{display:'flex',alignItems:'center',minWidth:Math.max(900,mainPath.length*180),gap:4}}>
+      {mainPath.map((id,i)=><React.Fragment key={id}>{i>0&&<Pipe active={transferActive(mainPath[i-1],id)||true}/>} {node(id)}</React.Fragment>)}
     </div></div>
-    <div style={{display:'grid',gridTemplateColumns:'repeat(5,minmax(130px,1fr))',gap:8,margin:'4px 0 12px'}}>
-      <div className="dashboard-card"><span>CO₂ vent</span><strong>Fermentation side stream</strong></div>
-      <div className="dashboard-card"><span>Residue solids</span><strong>Separation cake</strong></div>
-      <div className="dashboard-card"><span>Beer bottoms</span><strong>Wastewater stream</strong></div>
-      <div className="dashboard-card"><span>Rectifier bottoms</span><strong>Wastewater stream</strong></div>
-      <div className="dashboard-card"><span>P10 sieve recycle</span><strong>72 wt% EtOH → P09 tray 14 · converged recycle</strong></div>
-    </div>
     <div className="twin-readouts"><div><span>Completed feed</span><strong>{fmt(throughput.average_completed_feed_tph,2)} t/h</strong></div><div><span>Annual ethanol</span><strong>{fmt((throughput.ethanol_product_L_per_8000h_year||0)/1e6,2)} ML/y</strong></div><div><span>Blocked events</span><strong>{op.blocking_events||0}</strong></div><div><span>Pump contention</span><strong>{op.pump_contention_events||0}</strong></div></div>
     <section className="twin-live-section"><div className="section-heading"><div><span>Live batch vessels</span><h3>Individual vessel inventory & state</h3></div><p>Levels, states and batch lineage are taken directly from the connected event timeline.</p></div><VesselBank row={row} schedules={schedules}/></section>
     <section className="twin-live-section"><div className="section-heading"><div><span>Active transfers</span><h3>Batch movement</h3></div><p>Only direct vessel-to-vessel transfers generated by the event engine are shown.</p></div><div className="active-transfer-grid">{(row.active_transfers||[]).length?(row.active_transfers||[]).map((x:any,i:number)=><div key={i}><span>{x.from}</span><b>→</b><span>{x.to}</span><small>{(x.batch_ids||[]).join(' + ')||'Batch transfer'}</small></div>):<div className="transfer-idle">No vessel-to-vessel transfer active at this time.</div>}</div></section>
     <section className="twin-live-section"><div className="section-heading"><div><span>Transfer resources</span><h3>Pump status</h3></div><p>Busy pumps show the vessel currently owning the resource.</p></div><PumpPanel row={row} dynamic={dynamic}/></section>
-    <p className="model-boundary"><strong>V0.23 spreadsheet-aligned boundary:</strong> the application follows the master P01–P12 process sequence. P03 heat recovery is explicit after P02 and returns recovered sensible heat energetically to the incoming cold slurry; P07 represents beer-column-bottoms economising. P10 regeneration recycle is iteratively converged back to P09 on the workbook 72 wt% tear-stream basis. P02/P04/P05 batch states are event-resolved; P06–P10 remain continuous engineering-screening calculations.</p>
   </div>
 }
 
