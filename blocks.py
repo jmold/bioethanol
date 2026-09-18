@@ -15,6 +15,7 @@ class BaseBlock:
     output_ports: Dict[str, PortSpec] = {}
     default_params: dict = {}
     capabilities: tuple[str, ...] = ("continuous_process",)
+    schedule_adapter: str | None = None
 
     def __init__(self, block_id: str, params: dict | None = None):
         self.id = block_id
@@ -39,6 +40,7 @@ class BaseBlock:
             "catalogue_group": catalogue_group,
             "model_role": model_role,
             "capabilities": list(self.capabilities),
+            "schedule_adapter": self.schedule_adapter,
             "input_ports": {k: vars(v) for k,v in self.input_ports.items()},
             "output_ports": {k: vars(v) for k,v in self.output_ports.items()},
             "default_params": dict(self.default_params),
@@ -180,6 +182,7 @@ class ProcessWaterTankBlock(BaseBlock):
 
 class PretreatmentBlock(BaseBlock):
     capabilities=("batch_process","thermal","reaction")
+    schedule_adapter="pretreatment"
     type_name = "pretreatment"
     display_name = "Pretreatment"
     default_params = {
@@ -294,6 +297,7 @@ class PretreatmentBlock(BaseBlock):
 
 class HydrolysisBlock(BaseBlock):
     capabilities=("batch_process","reaction","agitated")
+    schedule_adapter="hydrolysis"
     type_name = "hydrolysis"
     display_name = "Enzymatic Hydrolysis"
     default_params = {
@@ -395,6 +399,7 @@ class HydrolysisBlock(BaseBlock):
 
 class FermentationBlock(BaseBlock):
     capabilities=("batch_process","reaction","agitated","cooling")
+    schedule_adapter="fermentation"
     type_name = "fermentation"
     display_name = "Fermentation"
     default_params = {
