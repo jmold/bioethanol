@@ -14,6 +14,7 @@ class BaseBlock:
     input_ports: Dict[str, PortSpec] = {}
     output_ports: Dict[str, PortSpec] = {}
     default_params: dict = {}
+    capabilities: tuple[str, ...] = ("continuous_process",)
 
     def __init__(self, block_id: str, params: dict | None = None):
         self.id = block_id
@@ -37,6 +38,7 @@ class BaseBlock:
             "display_name": self.display_name,
             "catalogue_group": catalogue_group,
             "model_role": model_role,
+            "capabilities": list(self.capabilities),
             "input_ports": {k: vars(v) for k,v in self.input_ports.items()},
             "output_ports": {k: vars(v) for k,v in self.output_ports.items()},
             "default_params": dict(self.default_params),
@@ -58,6 +60,7 @@ BLOCK_CATALOGUE_METADATA = {
 }
 
 class RawFeedBlock(BaseBlock):
+    capabilities=("source","material_source")
     type_name="raw_feed"; display_name="Raw Miscanthus Feed"
     input_ports={}
     output_ports={"feed":PortSpec("feed","out",description="As-received Miscanthus feed")}
@@ -156,6 +159,7 @@ class WaterSupplyBlock(BaseBlock):
         )
 
 class ProcessWaterTankBlock(BaseBlock):
+    capabilities=("utility","storage","material_source")
     type_name = "process_water_tank"
     display_name = "Process Water Tank / Header"
     input_ports = {}
@@ -175,6 +179,7 @@ class ProcessWaterTankBlock(BaseBlock):
                 note="Fresh make-up is total demand less usable recovered water."))
 
 class PretreatmentBlock(BaseBlock):
+    capabilities=("batch_process","thermal","reaction")
     type_name = "pretreatment"
     display_name = "Pretreatment"
     default_params = {
@@ -288,6 +293,7 @@ class PretreatmentBlock(BaseBlock):
         )
 
 class HydrolysisBlock(BaseBlock):
+    capabilities=("batch_process","reaction","agitated")
     type_name = "hydrolysis"
     display_name = "Enzymatic Hydrolysis"
     default_params = {
@@ -388,6 +394,7 @@ class HydrolysisBlock(BaseBlock):
         )
 
 class FermentationBlock(BaseBlock):
+    capabilities=("batch_process","reaction","agitated","cooling")
     type_name = "fermentation"
     display_name = "Fermentation"
     default_params = {
@@ -520,6 +527,7 @@ class FermentationBlock(BaseBlock):
         )
 
 class SolidsSeparationBlock(BaseBlock):
+    capabilities=("continuous_process","separation")
     type_name = "solids_separation"
     display_name = "Solids Separation"
     input_ports = {
@@ -625,6 +633,7 @@ class SolidsSeparationBlock(BaseBlock):
         )
 
 class BeerColumnBlock(BaseBlock):
+    capabilities=("continuous_process","separation","distillation","thermal")
     type_name = "beer_column"
     display_name = "Beer Column"
     input_ports = {
@@ -754,6 +763,7 @@ class BeerColumnBlock(BaseBlock):
         )
 
 class RectifierBlock(BaseBlock):
+    capabilities=("continuous_process","separation","distillation","thermal","recycle_receiver")
     type_name = "rectifier"
     display_name = "Rectifier"
     input_ports = {
@@ -869,6 +879,7 @@ class RectifierBlock(BaseBlock):
         )
 
 class MolecularSieveBlock(BaseBlock):
+    capabilities=("continuous_process","separation","dehydration","recycle_source")
     type_name = "molecular_sieve"
     display_name = "Molecular Sieve"
     input_ports = {
@@ -1017,6 +1028,7 @@ class SplitterBlock(BaseBlock):
                            metrics={"fraction_to_a":frac,"outlet_a_tph":a.total_tph,"outlet_b_tph":b.total_tph})
 
 class TankBlock(BaseBlock):
+    capabilities=("continuous_process","storage")
     type_name = "tank"
     display_name = "Tank"
     input_ports = {
@@ -1057,6 +1069,7 @@ class HeatGeneratorBlock(BaseBlock):
                 note="Manual demand is the current aggregation bridge; heat users report their calculated duties."))
 
 class HeatExchangerBlock(BaseBlock):
+    capabilities=("continuous_process","thermal","heat_recovery")
     type_name="heat_exchanger"; display_name="Heat Exchanger"
     input_ports={"process_in":PortSpec("process_in","in",description="Process stream inlet")}
     output_ports={"process_out":PortSpec("process_out","out",description="Process stream outlet")}
@@ -1088,6 +1101,7 @@ def _closure_error(inputs, outputs):
     return sum(s.total_tph for s in inputs.values()) - sum(s.total_tph for s in outputs.values())
 
 class PumpBlock(BaseBlock):
+    capabilities=("continuous_process","transfer")
     type_name="pump"; display_name="Transfer Pump"
     input_ports={"feed":PortSpec("feed","in",description="Liquid/slurry feed")};output_ports={"outlet":PortSpec("outlet","out",description="Pressurised outlet")}
     default_params={"delta_p_bar":2.0,"efficiency_fraction":0.70,"density_kg_per_m3":1000.0,"manual_electrical_load_kW":0.0,"electrical_load_factor_fraction":1.0,"annual_operating_hours":8000.0}
@@ -1136,6 +1150,7 @@ class HeaterCoolerBlock(BaseBlock):
 
 
 class ProductSinkBlock(BaseBlock):
+    capabilities=("sink","product_sink")
     type_name = "product_sink"
     display_name = "Product"
     input_ports = {"feed": PortSpec("feed","in",description="Product stream")}
@@ -1152,6 +1167,7 @@ class ProductSinkBlock(BaseBlock):
         )
 
 class WastewaterSinkBlock(BaseBlock):
+    capabilities=("sink","waste_sink")
     type_name = "wastewater_sink"
     display_name = "Wastewater"
     input_ports = {"feed": PortSpec("feed","in",description="Wastewater/discharge stream")}
@@ -1169,6 +1185,7 @@ class WastewaterSinkBlock(BaseBlock):
         )
 
 class VentSinkBlock(BaseBlock):
+    capabilities=("sink","vent_sink")
     type_name = "vent_sink"
     display_name = "Vent / Gas"
     input_ports = {"feed": PortSpec("feed","in",description="Vent or gas stream")}
@@ -1186,6 +1203,7 @@ class VentSinkBlock(BaseBlock):
         )
 
 class SolidSinkBlock(BaseBlock):
+    capabilities=("sink","solid_sink")
     type_name = "solid_sink"
     display_name = "Solid Product / Waste"
     input_ports = {"feed": PortSpec("feed","in",description="Solid terminal stream")}
