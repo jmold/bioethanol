@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from flowsheet import Flowsheet
-from connected_dynamic_engine import build_connected_dynamic_simulation
+from connected_dynamic_engine import build_connected_dynamic_simulation, _section_specs
 
 HERE=Path(__file__).resolve().parent
 
@@ -14,6 +14,22 @@ class ConnectedDynamicEngineTests(unittest.TestCase):
         cls.definition=json.loads((HERE/"flowsheet_reference.json").read_text(encoding="utf-8"))
         cls.result=Flowsheet(cls.definition).run()
         cls.connected=build_connected_dynamic_simulation(cls.definition,cls.result,timestep_min=15,horizon_h=168)
+
+    def test_batch_section_order_comes_from_topology_not_process_type(self):
+        legacy={"vessel_schedules":[
+            {"block_id":"reactor_c","block_type":"pretreatment"},
+            {"block_id":"reactor_a","block_type":"fermentation"},
+            {"block_id":"reactor_b","block_type":"hydrolysis"},
+        ]}
+        definition={
+            "blocks":[{"id":"reactor_a"},{"id":"bridge"},{"id":"reactor_b"},{"id":"reactor_c"}],
+            "connections":[
+                {"from_block":"reactor_a","to_block":"bridge"},
+                {"from_block":"bridge","to_block":"reactor_b"},
+                {"from_block":"reactor_b","to_block":"reactor_c"},
+            ],
+        }
+        self.assertEqual([x["block_id"] for x in _section_specs(legacy,definition)],["reactor_a","reactor_b","reactor_c"])
 
     def test_connected_engine_identity(self):
         self.assertEqual(self.connected["engine_version"],"0.23.0")
