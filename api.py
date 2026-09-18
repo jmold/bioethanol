@@ -14,13 +14,14 @@ from native_dynamic_engine import build_native_dynamic_simulation
 
 HERE = Path(__file__).resolve().parent
 
-APP_VERSION = "0.24.4"
-MODEL_VERSION = "0.24.1"
+APP_VERSION = "0.24.5"
+MODEL_VERSION = "0.24.2"
 
 app = FastAPI(title="Bio-Agri Process Simulator API", version=APP_VERSION)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173", "tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"],
+    allow_origin_regex=r"^http://(127\.0\.0\.1|localhost):\d+$",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

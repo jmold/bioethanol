@@ -105,7 +105,7 @@ class MacerationBlock(BaseBlock):
         rejected={k:v*reject_fraction for k,v in x.components_tph.items()}; retained={k:v-rejected[k] for k,v in x.components_tph.items()}
         out=Stream(f"{self.id}:outlet",retained,temperature_C=x.temperature_C,pressure_bar_abs=x.pressure_bar_abs,density_kg_per_m3=x.density_kg_per_m3,note="Macerated material")
         rejects=Stream(f"{self.id}:rejects",rejected,temperature_C=x.temperature_C,pressure_bar_abs=x.pressure_bar_abs,phase="solid",note="Maceration/grit reject")
-        return BlockResult({"outlet":out,"rejects":rejects},metrics={"reject_total_tph":rejects.total_tph,"calculated_electrical_load_kW":calc,"applied_electrical_load_kW":elec,"annual_electricity_kWh":elec*p["annual_operating_hours"]},
+        return BlockResult({"outlet":out,"rejects":rejects},metrics={"inlet_total_tph":x.total_tph,"main_outlet_tph":out.total_tph,"reject_total_tph":rejects.total_tph,"reject_fraction":reject_fraction,"main_product_fraction":1.0-reject_fraction,"closure_error_tph":x.total_tph-out.total_tph-rejects.total_tph,"calculated_electrical_load_kW":calc,"applied_electrical_load_kW":elec,"annual_electricity_kWh":elec*p["annual_operating_hours"]},
             utilities=UtilityDemand(electricity_kW=elec,peak_electricity_kW=base),equipment=[EquipmentRequirement(equipment_type="Macerator",design_flow_tph=x.total_tph,motor_kW=base)],
             metadata=EngineeringMetadata(status="PROVISIONAL ENGINEERING ASSUMPTION",basis="Specific energy or manual vendor load",confidence="MEDIUM"))
 

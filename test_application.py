@@ -49,6 +49,16 @@ class ApplicationRegressionTests(unittest.TestCase):
         macerator = result["block_results"]["macerator"]["metrics"]
         self.assertAlmostEqual(macerator["annual_electricity_kWh"], macerator["applied_electrical_load_kW"] * 6000)
 
+    def test_sources_run_and_maceration_split_closes(self):
+        result = Flowsheet(self.reference).run()
+        self.assertIn("raw_feed", result["block_results"])
+        self.assertIn("feed_process_water", result["block_results"])
+        macerator = result["block_results"]["macerator"]["metrics"]
+        self.assertGreater(macerator["main_outlet_tph"], 0)
+        self.assertGreater(macerator["reject_total_tph"], 0)
+        self.assertAlmostEqual(macerator["reject_fraction"], 0.005)
+        self.assertAlmostEqual(macerator["closure_error_tph"], 0.0, places=12)
+
     def test_empty_flowsheet_is_rejected_with_422(self):
         with self.assertRaises(HTTPException) as caught:
             validate_flowsheet_definition({"name": "Empty", "blocks": [], "connections": []})

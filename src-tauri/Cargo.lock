@@ -111,7 +111,7 @@ checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "bioagri-process-simulator"
-version = "0.24.4"
+version = "0.24.5"
 dependencies = [
  "serde",
  "serde_json",

@@ -256,7 +256,7 @@ function ProcessNode({data,selected}:any){
     <div className="node-title">{data.label}</div>
     <div className="node-bottom">
       {data.status?<span className={`status-dot ${statusClass(data.status)}`} title={data.status}></span>:<span/>}
-      {data.balance!==undefined?<span className={`balance ${Math.abs(data.balance)<1e-8?'ok':'bad'}`}>{Math.abs(data.balance)<1e-8?'Balanced':'Check balance'}</span>:<span className="node-hint">Not run</span>}
+      {data.balance!==undefined?<span className={`balance ${Math.abs(data.balance)<1e-8?'ok':'bad'}`}>{Math.abs(data.balance)<1e-8?'Balanced':'Check balance'}</span>:<span className={`node-hint ${data.hasResult?'complete':''}`}>{data.runState}</span>}
     </div>
     {outputs.map((p:any,i:number)=><Handle key={p.name} type="source" position={Position.Right} id={p.name} style={{top:42+i*20}} />)}
   </div>
@@ -323,6 +323,9 @@ function arrangeFlowsheet(source:Flowsheet){
 function App(){
   const [flow,setFlow]=useState<Flowsheet|null>(()=>arrangeFlowsheet(structuredClone(embeddedReference) as Flowsheet))
   const [library,setLibrary]=useState<any[]>(fallbackBlockLibrary)
+  const [libraryNames,setLibraryNames]=useState<Record<string,string>>(()=>{
+    try{return JSON.parse(localStorage.getItem('bioagri.standardBlockNames')||'{}')}catch{return {}}
+  })
   const [selected,setSelected]=useState<string|null>(null)
   const [selectedStream,setSelectedStream]=useState<string|null>(null)
   const [results,setResults]=useState<any>(null)
@@ -333,6 +336,7 @@ function App(){
   const [notice,setNotice]=useState('Opening reference model…')
   const [savedFlows,setSavedFlows]=useState<any[]>([])
   const [libraryQuery,setLibraryQuery]=useState('')
+  const [editingLibraryNames,setEditingLibraryNames]=useState(false)
   const [inspectorTab,setInspectorTab]=useState<'configure'|'results'>('configure')
   const [dashboardOpen,setDashboardOpen]=useState(false)
   const [activePage,setActivePage]=useState<'dashboard'|'flowsheet'|'twin'|'scheduler'>('dashboard')
@@ -419,7 +423,9 @@ function App(){
         status:b.params?.design_status||res?.metadata?.status||'',
         inputs:libraryInputs.length?libraryInputs:connectedInputs,
         outputs:libraryOutputs.length?libraryOutputs:connectedOutputs,
-        hasError:(res?.errors?.length||0)>0,balance:res?.metrics?.closure_error_tph
+        hasError:(res?.errors?.length||0)>0,hasResult:Boolean(res),
+        runState:res?((libraryInputs.length||connectedInputs.length)?'Run complete':'Source supplied'):'Not run',
+        balance:res?.metrics?.closure_error_tph
       }}
     }))
     setEdges(flow.connections.map((c:any)=>({
@@ -472,8 +478,14 @@ function App(){
     if(!flow)return
     const schema=schemaByType[type],id=`${type}_${Date.now().toString().slice(-5)}`
     const viewportX=120+(flow.blocks.length%3)*30,viewportY=120+(flow.blocks.length%5)*70
-    const b:BlockDef={id,type,name:schema?.display_name||pretty(type),params:{...(schema?.default_params||{})},position:{x:viewportX,y:viewportY}}
+    const b:BlockDef={id,type,name:libraryNames[type]||schema?.display_name||pretty(type),params:{...(schema?.default_params||{})},position:{x:viewportX,y:viewportY}}
     commit({...flow,blocks:[...flow.blocks,b]},`Added ${b.name}`);setSelected(id);setSelectedStream(null);setShowInspector(true)
+  }
+
+  function setStandardLibraryName(type:string,name:string){
+    const clean=name.trim();const next={...libraryNames}
+    if(clean)next[type]=clean;else delete next[type]
+    setLibraryNames(next);localStorage.setItem('bioagri.standardBlockNames',JSON.stringify(next))
   }
 
   function deleteSelected(){
@@ -551,9 +563,9 @@ function App(){
   async function loadEngineeringData(){setAnalysisBusy(true);try{const [physics,vle,summary,heat]=await Promise.all(['physics-summary','vle-screening','v015-summary','dynamic-heat-profile'].map(p=>apiFetch(`${API}/api/${p}`).then(r=>r.json())));setAnalysisData({kind:'engineering',physics,vle,summary,heat})}catch(e:any){setAnalysisData({kind:'error',message:e.message})}finally{setAnalysisBusy(false)}}
 
   const groupedLibrary=useMemo(()=>{
-    const q=libraryQuery.trim().toLowerCase();const rows=library.filter((b:any)=>!q||`${b.display_name} ${b.type}`.toLowerCase().includes(q));
+    const q=libraryQuery.trim().toLowerCase();const rows=library.map((b:any)=>({...b,effective_display_name:libraryNames[b.type]||b.display_name})).filter((b:any)=>!q||`${b.effective_display_name} ${b.display_name} ${b.type}`.toLowerCase().includes(q));
     return rows.reduce((acc:Record<string,any[]>,b:any)=>{(acc[category(b.type)]||=[]).push(b);return acc},{})
-  },[library,libraryQuery])
+  },[library,libraryNames,libraryQuery])
 
   const basicKeys=useMemo(()=>{
     if(!selectedBlock)return []
@@ -616,10 +628,10 @@ function App(){
 
     <div className={`workspace ${showLibrary?'with-library':''} ${showInspector?'with-inspector':''}`} style={{display:activePage==='flowsheet'?undefined:'none'}}>
       {showLibrary&&<aside className="library-panel">
-        <div className="panel-header"><div><strong>Add process step</strong><span>Drag-free library</span></div><button className="ghost-icon" onClick={()=>setShowLibrary(false)} title="Hide library">‹</button></div>
+        <div className="panel-header"><div><strong>Add process step</strong><span>Standard equipment & process models</span></div><div className="panel-header-actions"><button className={`library-edit-toggle ${editingLibraryNames?'active':''}`} onClick={()=>setEditingLibraryNames(v=>!v)} title="Edit standard library names">{editingLibraryNames?'Done':'Edit names'}</button><button className="ghost-icon" onClick={()=>setShowLibrary(false)} title="Hide library">‹</button></div></div>
         <div className="search-wrap"><span>⌕</span><input value={libraryQuery} onChange={e=>setLibraryQuery(e.target.value)} placeholder="Search equipment…"/></div>
         <div className="library-scroll">
-          {Object.entries(groupedLibrary).map(([group,items]:any)=><section className="library-group" key={group}><h3>{group}</h3>{items.map((b:any)=><button className="library-item" key={b.type} onClick={()=>addBlock(b.type)}><span className="library-symbol">{b.display_name?.slice(0,1)||'•'}</span><span><strong>{b.display_name}</strong><small>{Object.keys(b.input_ports||{}).length} in · {Object.keys(b.output_ports||{}).length} out</small></span><span className="add-glyph">＋</span></button>)}</section>)}
+          {Object.entries(groupedLibrary).map(([group,items]:any)=><section className="library-group" key={group}><h3>{group}</h3>{items.map((b:any)=><div className={`library-item ${editingLibraryNames?'is-editing':''}`} key={b.type}><button className="library-add-main" onClick={()=>addBlock(b.type)} disabled={editingLibraryNames}><span className="library-symbol">{b.effective_display_name?.slice(0,1)||'•'}</span><span><strong>{b.effective_display_name}</strong><small>{Object.keys(b.input_ports||{}).length} in · {Object.keys(b.output_ports||{}).length} out</small></span>{!editingLibraryNames&&<span className="add-glyph">＋</span>}</button>{editingLibraryNames&&<div className="library-name-editor"><input aria-label={`Standard name for ${b.type}`} value={b.effective_display_name} onChange={e=>setStandardLibraryName(b.type,e.target.value)} /><button onClick={()=>setStandardLibraryName(b.type,'')} disabled={!libraryNames[b.type]} title="Restore built-in name">Reset</button><small>Internal type: {b.type}</small></div>}</div>)}</section>)}
           {!Object.keys(groupedLibrary).length&&<div className="empty-small">No matching process blocks.</div>}
         </div>
       </aside>}

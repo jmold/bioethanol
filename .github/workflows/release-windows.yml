@@ -105,7 +105,7 @@ jobs:
         with:
           tagName: app-v__VERSION__
           releaseName: "BioAgri Process Simulator v__VERSION__"
-          releaseBody: "BioAgri Process Simulator V0.24.4 adds an explicit feed-preparation process-water supply and stream, plus a global plant operating basis for hours per day, days per year, and derived annual operating hours. The global basis now drives equipment annual-energy calculations consistently."
+          releaseBody: "BioAgri Process Simulator V0.24.5 adds persistent editable standard names to the process-block catalogue without changing stable type IDs or existing flowsheets. It also fixes false Not run labels on completed source blocks and exposes the Maceration main/reject split, fractions, and mass-balance closure."
           releaseDraft: false
           prerelease: false
           args: --bundles nsis
