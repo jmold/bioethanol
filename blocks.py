@@ -1232,6 +1232,7 @@ class SolidSinkBlock(BaseBlock):
         )
 
 class RecycleSinkBlock(BaseBlock):
+    capabilities=("sink","recycle_sink")
     type_name = "recycle_sink"
     display_name = "Recycle Placeholder"
     input_ports = {"feed": PortSpec("feed","in",description="Recycle stream")}
