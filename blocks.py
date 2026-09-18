@@ -30,13 +30,32 @@ class BaseBlock:
         raise NotImplementedError
 
     def schema(self):
+        catalogue_group, model_role = BLOCK_CATALOGUE_METADATA.get(self.type_name, ("Process models", "specialist_model"))
         return {
             "type": self.type_name,
+            "type_id": self.type_name,
             "display_name": self.display_name,
+            "catalogue_group": catalogue_group,
+            "model_role": model_role,
             "input_ports": {k: vars(v) for k,v in self.input_ports.items()},
             "output_ports": {k: vars(v) for k,v in self.output_ports.items()},
             "default_params": dict(self.default_params),
         }
+
+BLOCK_CATALOGUE_METADATA = {
+    "raw_feed": ("Sources", "configured_source"), "water_supply": ("Sources", "legacy_source"),
+    "process_water_tank": ("Utilities", "standard_equipment"), "material_dose": ("Sources", "standard_equipment"),
+    "pump": ("Transfer", "standard_equipment"), "mixer": ("Mixing & splitting", "standard_equipment"),
+    "splitter": ("Mixing & splitting", "standard_equipment"), "tank": ("Storage", "standard_equipment"),
+    "heat_exchanger": ("Thermal", "standard_equipment"), "heater_cooler": ("Thermal", "standard_equipment"),
+    "heat_recovery": ("Thermal", "standard_equipment"), "heat_generator": ("Utilities", "standard_equipment"),
+    "flash_letdown": ("Separation", "standard_equipment"), "solids_separation": ("Separation", "configured_model"),
+    "product_sink": ("Terminals", "standard_equipment"), "wastewater_sink": ("Terminals", "standard_equipment"),
+    "vent_sink": ("Terminals", "standard_equipment"), "solid_sink": ("Terminals", "standard_equipment"),
+    "recycle_sink": ("Terminals", "legacy_placeholder"), "wastewater_collector": ("Mixing & splitting", "standard_equipment"),
+    "utility_header": ("Utilities", "standard_equipment"), "cooling_water": ("Utilities", "standard_equipment"),
+    "cip_demand": ("Utilities", "configured_model"), "batch_scheduler": ("Operations", "standard_service"),
+}
 
 class RawFeedBlock(BaseBlock):
     type_name="raw_feed"; display_name="Raw Miscanthus Feed"
@@ -60,7 +79,7 @@ class FeedPreparationBlock(BaseBlock):
                  "process_water":PortSpec("process_water","in",required=False,description="Optional water connection; required flow is calculated")}
     output_ports={"slurry":PortSpec("slurry","out",description="Prepared Miscanthus slurry"),
                   "rejects":PortSpec("rejects","out",required=False,description="Legacy maceration/grit rejects")}
-    default_params={"target_slurry_dry_matter_fraction":0.20,"process_water_temperature_C":15.0,"slurry_density_kg_per_m3":1000.0,
+    default_params={"water_demand_mode":"calculated","manual_process_water_tph":11.4705882353,"target_slurry_dry_matter_fraction":0.20,"process_water_temperature_C":15.0,"slurry_density_kg_per_m3":1000.0,
                     "manual_electrical_load_kW":0.0,"electrical_load_factor_fraction":1.0,"annual_operating_hours":8000.0}
     def calculate(self,inputs):
         errors=self.validate_inputs(inputs)
@@ -74,7 +93,10 @@ class FeedPreparationBlock(BaseBlock):
             feed=Stream(f"{self.id}:raw_feed",{"water":total-dry,**{k:dry*v for k,v in composition.items()}},temperature_C=p["process_water_temperature_C"])
         if not 0<target<1:return BlockResult({},errors=["Target slurry dry matter must be between 0 and 1."])
         dry=sum(v for k,v in feed.components_tph.items() if k!="water"); required_add=max(0.0,dry/target-feed.total_tph)
-        wt=inputs.get("process_water"); add=wt.get("water") if wt else required_add; water_T=wt.temperature_C if wt and wt.temperature_C is not None else p["process_water_temperature_C"]
+        wt=inputs.get("process_water"); mode=str(p.get("water_demand_mode","calculated")).lower()
+        if mode not in {"calculated","manual"}:return BlockResult({},errors=["Water demand mode must be 'calculated' or 'manual'."])
+        add=required_add if mode=="calculated" else max(0.0,float(p.get("manual_process_water_tph",0.0)))
+        water_T=wt.temperature_C if wt and wt.temperature_C is not None else p["process_water_temperature_C"]
         comp=dict(feed.components_tph); comp["water"]=feed.get("water")+add; total=sum(comp.values())
         mix_T=(feed.total_tph*(feed.temperature_C or water_T)+add*water_T)/total if total else water_T
         reject_fraction=p.get("maceration_grit_reject_fraction",0.005) if legacy else 0.0
@@ -83,8 +105,9 @@ class FeedPreparationBlock(BaseBlock):
         rejects=Stream(f"{self.id}:rejects",rejected,temperature_C=mix_T,phase="solid",note="Maceration/grit reject")
         manual=max(0.0,p["manual_electrical_load_kW"]); elec=manual*max(0.0,p["electrical_load_factor_fraction"])
         warnings=[]
-        if wt and abs(add-required_add)>1e-6:warnings.append(f"Connected water is {add:.4f} t/h versus {required_add:.4f} t/h required for the selected dry-matter target; the connected flow is used.")
+        if mode=="manual" and abs(add-required_add)>1e-6:warnings.append(f"Manual process water is {add:.4f} t/h versus {required_add:.4f} t/h required for the selected dry-matter target; the manual flow is used.")
         return BlockResult({"slurry":out,"rejects":rejects},metrics={"as_received_feed_tph":feed.total_tph,"incoming_feed_water_tph":feed.get("water"),"incoming_dry_matter_tph":dry,"process_water_addition_tph":add,"required_process_water_tph":required_add,
+            "water_demand_mode":mode,
             "reject_total_tph":rejects.total_tph,"slurry_tph":out.total_tph,"actual_slurry_dry_matter_fraction":sum(v for k,v in retained.items() if k!="water")/out.total_tph if out.total_tph else 0,
             "annual_electricity_kWh":elec*p["annual_operating_hours"],"closure_error_tph":feed.total_tph+add-out.total_tph-rejects.total_tph},
             utilities=UtilityDemand(electricity_kW=elec,peak_electricity_kW=manual,process_water_tph=0.0 if wt else add),
@@ -131,6 +154,25 @@ class WaterSupplyBlock(BaseBlock):
             utilities=UtilityDemand(process_water_tph=flow),
             metadata=EngineeringMetadata(status="USER INPUT", basis="Connected process-water supply", confidence="HIGH")
         )
+
+class ProcessWaterTankBlock(BaseBlock):
+    type_name = "process_water_tank"
+    display_name = "Process Water Tank / Header"
+    input_ports = {}
+    output_ports = {"process_water": PortSpec("process_water", "out", description="Allocated site process water")}
+    default_params = {"recovered_water_tph": 0.0, "residence_time_h": 4.0, "working_volume_margin_fraction": 0.15,
+                      "temperature_C": 15.0, "pressure_bar_abs": 2.0, "density_kg_per_m3": 999.0}
+
+    def calculate(self, inputs):
+        p = {**self.default_params, **self.params}
+        if p["recovered_water_tph"] < 0 or p["residence_time_h"] < 0 or p["density_kg_per_m3"] <= 0:
+            return BlockResult({}, errors=["Recovered water and residence time must be non-negative and density must be positive."])
+        placeholder = Stream(f"{self.id}:process_water", {"water": 0.0}, temperature_C=p["temperature_C"],
+                             pressure_bar_abs=p["pressure_bar_abs"], phase="liquid", density_kg_per_m3=p["density_kg_per_m3"],
+                             note="Site process-water allocation; finalised from consumer demand")
+        return BlockResult({"process_water": placeholder}, metrics={"site_process_water_demand_tph": 0.0},
+            metadata=EngineeringMetadata(status="CALCULATED", basis="Site process-water consumer aggregation", confidence="HIGH",
+                note="Fresh make-up is total demand less usable recovered water."))
 
 class PretreatmentBlock(BaseBlock):
     type_name = "pretreatment"
@@ -1707,6 +1749,7 @@ class DistillationUtilityEnvelopeBlock(BaseBlock):
 
 BLOCK_REGISTRY: Dict[str, Type[BaseBlock]] = {
     WaterSupplyBlock.type_name: WaterSupplyBlock,
+    ProcessWaterTankBlock.type_name: ProcessWaterTankBlock,
     RawFeedBlock.type_name: RawFeedBlock,
     FeedPreparationBlock.type_name: FeedPreparationBlock,
     MacerationBlock.type_name: MacerationBlock,

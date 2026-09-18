@@ -2,7 +2,7 @@
 from __future__ import annotations
 from collections import defaultdict, deque
 from typing import Dict, Any
-from models import Connection, BlockInstance, Stream
+from models import Connection, BlockInstance, Stream, EquipmentRequirement
 from blocks import BLOCK_REGISTRY
 
 class FlowsheetError(Exception):
@@ -239,7 +239,30 @@ class Flowsheet:
                     continue
                 incoming_by_block[cn.to_block][cn.to_port] = result.outputs[cn.from_port].copy(new_id=cn.id)
 
+        self._finalize_process_water_system()
         return self.summary()
+
+    def _finalize_process_water_system(self):
+        tanks=[bid for bid,b in self.blocks.items() if b.type=="process_water_tank" and bid in self.results]
+        if not tanks:return
+        consumers=[]
+        for bid,res in self.results.items():
+            if bid in tanks:continue
+            if "process_water_addition_tph" in res.metrics:
+                demand=max(0.0,float(res.metrics.get("process_water_addition_tph",0.0)))
+            else:
+                demand=max(0.0,float(res.utilities.process_water_tph or 0.0))
+            if demand>0:consumers.append({"block_id":bid,"block_name":self.blocks[bid].name,"demand_tph":demand,"mode":res.metrics.get("water_demand_mode","reported")})
+        total=sum(row["demand_tph"] for row in consumers)
+        tank_id=tanks[0]; tank=self.blocks[tank_id]; result=self.results[tank_id]; p=tank.params
+        recovered=max(0.0,float(p.get("recovered_water_tph",0.0) or 0.0)); recovered_used=min(total,recovered)
+        fresh=max(0.0,total-recovered_used); surplus=max(0.0,recovered-total)
+        density=max(1e-12,float(p.get("density_kg_per_m3",999.0) or 999.0)); residence=max(0.0,float(p.get("residence_time_h",4.0) or 0.0)); margin=max(0.0,float(p.get("working_volume_margin_fraction",0.15) or 0.0))
+        stream=Stream(f"{tank_id}:process_water",{"water":total},temperature_C=float(p.get("temperature_C",15.0)),pressure_bar_abs=float(p.get("pressure_bar_abs",2.0)),phase="liquid",density_kg_per_m3=density,note="Allocated site process-water demand")
+        result.outputs["process_water"]=stream; self.streams[f"{tank_id}.process_water"]=stream
+        result.metrics.update({"site_process_water_demand_tph":total,"recovered_water_available_tph":recovered,"recovered_water_used_tph":recovered_used,"fresh_water_makeup_tph":fresh,"surplus_recovered_water_tph":surplus,"required_working_volume_m3":total*1000.0/density*residence*(1.0+margin),"consumer_count":len(consumers),"consumers":consumers})
+        result.utilities.process_water_tph=fresh
+        result.equipment=[EquipmentRequirement(equipment_type="Process-water tank / distribution header",design_flow_tph=total,working_volume_m3=result.metrics["required_working_volume_m3"],residence_time_h=residence)]
 
 
     def _utility_totals(self):
@@ -360,6 +383,12 @@ class Flowsheet:
             "reaction_adjusted_closure_percent":(adjusted_error/source_water*100 if source_water else 0.0),
             "note":"Free-water balance is reaction-adjusted; hydrolysis incorporates water into glucose."
         }
+
+    def _site_process_water_summary(self):
+        tank=next((self.results[bid] for bid,b in self.blocks.items() if b.type=="process_water_tank" and bid in self.results),None)
+        if not tank:return {"configured":False,"total_demand_tph":self._utility_totals().get("process_water_tph",0.0)}
+        m=tank.metrics
+        return {"configured":True,"total_demand_tph":m.get("site_process_water_demand_tph",0.0),"fresh_water_makeup_tph":m.get("fresh_water_makeup_tph",0.0),"recovered_water_available_tph":m.get("recovered_water_available_tph",0.0),"recovered_water_used_tph":m.get("recovered_water_used_tph",0.0),"surplus_recovered_water_tph":m.get("surplus_recovered_water_tph",0.0),"required_working_volume_m3":m.get("required_working_volume_m3",0.0),"consumers":m.get("consumers",[])}
 
     def _component_closure(self):
         components=set()
@@ -588,6 +617,7 @@ class Flowsheet:
             "terminal_summary": self._terminal_summary(),
             "overall_material_closure": self._overall_material_closure(),
             "water_balance": self._water_balance(),
+            "site_process_water": self._site_process_water_summary(),
             "component_closure": self._component_closure(),
             "utilities_by_block": self._utilities_by_block(),
             "open_decisions": self._open_decisions(),

@@ -37,11 +37,11 @@ class SpreadsheetAlignmentTests(unittest.TestCase):
 
     def test_feed_process_water_is_an_explicit_stream(self):
         connections={(c["from_block"],c["from_port"],c["to_block"],c["to_port"]) for c in self.definition["connections"]}
-        self.assertIn(("feed_process_water","water","feed","process_water"),connections)
-        water=self.result["block_results"]["feed_process_water"]["metrics"]
+        self.assertIn(("site_process_water","process_water","feed","process_water"),connections)
+        water=self.result["block_results"]["site_process_water"]["metrics"]
         feed=self.result["block_results"]["feed"]["metrics"]
-        self.assertAlmostEqual(water["water_tph"],11.4705882353,places=9)
-        self.assertAlmostEqual(feed["process_water_addition_tph"],water["water_tph"],places=9)
+        self.assertAlmostEqual(water["site_process_water_demand_tph"],11.4705882353,places=9)
+        self.assertAlmostEqual(feed["process_water_addition_tph"],water["site_process_water_demand_tph"],places=9)
 
     def test_p03_workbook_heat_basis(self):
         self.assertFalse(self.result["errors"],self.result["errors"])

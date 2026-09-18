@@ -5,6 +5,7 @@ from pathlib import Path
 from api import FlowsheetPayload, create_report, validate_flowsheet_definition
 from fastapi import HTTPException
 from flowsheet import Flowsheet
+from blocks import BLOCK_REGISTRY
 from scenario_engine import ScenarioManager, SensitivityRunner, extract_kpis
 
 HERE = Path(__file__).resolve().parent
@@ -52,12 +53,40 @@ class ApplicationRegressionTests(unittest.TestCase):
     def test_sources_run_and_maceration_split_closes(self):
         result = Flowsheet(self.reference).run()
         self.assertIn("raw_feed", result["block_results"])
-        self.assertIn("feed_process_water", result["block_results"])
+        self.assertIn("site_process_water", result["block_results"])
         macerator = result["block_results"]["macerator"]["metrics"]
         self.assertGreater(macerator["main_outlet_tph"], 0)
         self.assertGreater(macerator["reject_total_tph"], 0)
         self.assertAlmostEqual(macerator["reject_fraction"], 0.005)
         self.assertAlmostEqual(macerator["closure_error_tph"], 0.0, places=12)
+
+    def test_process_water_tank_aggregates_demand_and_recovery(self):
+        definition = json.loads(json.dumps(self.reference))
+        tank = next(b for b in definition["blocks"] if b["id"] == "site_process_water")
+        tank["params"]["recovered_water_tph"] = 5.0
+        result = Flowsheet(definition).run()
+        water = result["site_process_water"]
+        self.assertTrue(water["configured"])
+        self.assertAlmostEqual(water["total_demand_tph"], 11.4705882353, places=9)
+        self.assertAlmostEqual(water["recovered_water_used_tph"], 5.0)
+        self.assertAlmostEqual(water["fresh_water_makeup_tph"], 6.4705882353, places=9)
+        self.assertGreater(water["required_working_volume_m3"], 0)
+        self.assertEqual(water["consumers"][0]["block_id"], "feed")
+
+    def test_feed_water_manual_mode_is_reported_to_site_tank(self):
+        definition = json.loads(json.dumps(self.reference))
+        feed = next(b for b in definition["blocks"] if b["id"] == "feed")
+        feed["params"].update({"water_demand_mode": "manual", "manual_process_water_tph": 9.0})
+        result = Flowsheet(definition).run()
+        self.assertAlmostEqual(result["site_process_water"]["total_demand_tph"], 9.0)
+        self.assertEqual(result["site_process_water"]["consumers"][0]["mode"], "manual")
+        self.assertTrue(any("Manual process water" in warning for warning in result["warnings"]))
+
+    def test_block_schema_exposes_stable_catalogue_metadata(self):
+        tank = BLOCK_REGISTRY["process_water_tank"]("schema").schema()
+        self.assertEqual(tank["type_id"], "process_water_tank")
+        self.assertEqual(tank["catalogue_group"], "Utilities")
+        self.assertEqual(tank["model_role"], "standard_equipment")
 
     def test_empty_flowsheet_is_rejected_with_422(self):
         with self.assertRaises(HTTPException) as caught:

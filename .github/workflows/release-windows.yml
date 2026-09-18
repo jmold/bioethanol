@@ -105,7 +105,7 @@ jobs:
         with:
           tagName: app-v__VERSION__
           releaseName: "BioAgri Process Simulator v__VERSION__"
-          releaseBody: "BioAgri Process Simulator V0.24.5 adds persistent editable standard names to the process-block catalogue without changing stable type IDs or existing flowsheets. It also fixes false Not run labels on completed source blocks and exposes the Maceration main/reject split, fractions, and mass-balance closure."
+          releaseBody: "BioAgri Process Simulator V0.24.6 introduces stable standard-equipment catalogue metadata and a site Process Water Tank / Header. The tank aggregates calculated or manual consumer demand, credits recovered water, calculates fresh make-up, surplus and required working volume, and reports the site water balance without changing existing legacy block IDs."
           releaseDraft: false
           prerelease: false
           args: --bundles nsis

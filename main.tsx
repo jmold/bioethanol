@@ -24,6 +24,7 @@ type Flowsheet={name:string,operating_basis?:OperatingBasis,blocks:BlockDef[],co
 const fallbackBlockLibrary=[
   ['raw_feed','Raw Miscanthus Feed',[],['feed'],{as_received_feed_tph:3.5294,dry_matter_fraction:.85,temperature_C:15}],
   ['water_supply','Process Water Supply',[],['water'],{flow_tph:11.4705882353,temperature_C:15,pressure_bar_abs:2,density_kg_per_m3:999}],
+  ['process_water_tank','Process Water Tank / Header',[],['process_water'],{recovered_water_tph:0,residence_time_h:4,working_volume_margin_fraction:.15,temperature_C:15,pressure_bar_abs:2,density_kg_per_m3:999}],
   ['feed_preparation','Feed Preparation / Slurry Make-up',['raw_feed','process_water'],['slurry','rejects'],{target_slurry_dry_matter_fraction:.20}],
   ['maceration','Maceration / Size Reduction',['feed'],['outlet','rejects'],{grit_reject_fraction:.005,specific_energy_kWh_per_t_feed:12,manual_electrical_load_kW:0,electrical_load_factor_fraction:1,annual_operating_hours:8000}],
   ['pretreatment','Pretreatment',['feed'],['slurry'],{}],['hydrolysis','Hydrolysis',['feed'],['hydrolysate'],{}],
@@ -150,6 +151,7 @@ function PlantDashboard({results}:any){
   const util=results?.utility_totals||{}
   const closure=results?.overall_material_closure||{}
   const op=dynamic.operability||{}
+  const water=results?.site_process_water||{}
   const annualL=Number(throughput.ethanol_product_L_per_8000h_year||0)
   const elec=Number(util.electricity_kW||0),heat=Number(util.thermal_kW||0)
   const productLph=annualL/8000
@@ -164,6 +166,7 @@ function PlantDashboard({results}:any){
       <article><span>Electricity</span><strong>{fmt(elec,1)} kW</strong><small>{fmt(specificElec,3)} kWh/L ethanol</small></article>
       <article><span>Process heat</span><strong>{fmt(heat,1)} kW</strong><small>{fmt(specificHeat,3)} kWh/L ethanol</small></article>
       <article><span>Material closure</span><strong>{fmt(closure.closure_error_tph||0,6)} t/h</strong><small>{Math.abs(Number(closure.closure_error_tph||0))<1e-6?'Closed':'Review balance'}</small></article>
+      <article><span>Fresh process water</span><strong>{fmt(water.fresh_water_makeup_tph||0,3)} t/h</strong><small>{fmt(water.recovered_water_used_tph||0,3)} t/h recovered water used</small></article>
       <article><span>Current bottleneck</span><strong>{bottleneck?.block_name||'—'}</strong><small>{fmt(Number(bottleneck?.utilisation_fraction||0)*100,1)}% design utilisation</small></article>
     </div>
     <div className="dashboard-two-col">
@@ -263,7 +266,8 @@ function ProcessNode({data,selected}:any){
 }
 const nodeTypes={process:ProcessNode}
 
-function category(type:string){
+function category(type:string,catalogueGroup?:string){
+  if(catalogueGroup)return catalogueGroup
   if(/feed|dose/.test(type)) return 'Feed & dosing'
   if(/pretreatment|hydrolysis|fermentation/.test(type)) return 'Conversion'
   if(/separation|column|rectifier|sieve|conditioning/.test(type)) return 'Separation & recovery'
@@ -564,7 +568,7 @@ function App(){
 
   const groupedLibrary=useMemo(()=>{
     const q=libraryQuery.trim().toLowerCase();const rows=library.map((b:any)=>({...b,effective_display_name:libraryNames[b.type]||b.display_name})).filter((b:any)=>!q||`${b.effective_display_name} ${b.display_name} ${b.type}`.toLowerCase().includes(q));
-    return rows.reduce((acc:Record<string,any[]>,b:any)=>{(acc[category(b.type)]||=[]).push(b);return acc},{})
+    return rows.reduce((acc:Record<string,any[]>,b:any)=>{(acc[category(b.type,b.catalogue_group)]||=[]).push(b);return acc},{})
   },[library,libraryNames,libraryQuery])
 
   const basicKeys=useMemo(()=>{
@@ -742,6 +746,7 @@ function App(){
         <div><span>Electricity</span><strong>{fmt(results?.utility_totals?.electricity_kW||0,1)} <small>kW</small></strong><p>Total connected demand</p></div>
         <div><span>Process heat</span><strong>{fmt(results?.utility_totals?.thermal_kW||0,1)} <small>kW</small></strong><p>Total thermal duty</p></div>
         <div><span>Steam</span><strong>{fmt(results?.utility_totals?.steam_kgph||0,0)} <small>kg/h</small></strong><p>Estimated consumption</p></div>
+        <div><span>Fresh process water</span><strong>{fmt(results?.site_process_water?.fresh_water_makeup_tph||0,3)} <small>t/h</small></strong><p>{fmt(results?.site_process_water?.total_demand_tph||0,3)} t/h total site demand</p></div>
       </div>
       <div className="sheet-grid">
         <section className="dashboard-card"><div className="section-title">Engineering checks</div><div className="metric-list"><div><span>Material balance difference</span><strong>{fmt(results?.overall_material_closure?.closure_error_tph||0,6)} t/h</strong></div><div><span>Water balance difference</span><strong>{fmt(results?.water_balance?.reaction_adjusted_closure_error_tph||0,6)} t/h</strong></div><div><span>Open / provisional decisions</span><strong>{decisionCount}</strong></div></div></section>
