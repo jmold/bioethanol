@@ -551,6 +551,41 @@ class Flowsheet:
         }
 
 
+    def _distillation_design_summary(self):
+        rows=[]
+        for bid,res in self.results.items():
+            block=self.blocks[bid]
+            cls=BLOCK_REGISTRY.get(block.type)
+            if cls is None or "distillation" not in getattr(cls,"capabilities",()):
+                continue
+            sc=res.metrics.get("shortcut_distillation") or {}
+            feed=next((s for key,s in self.streams.items() if key.startswith(f"{bid}.") and False),None)
+            rows.append({
+                "block_id":bid,
+                "block_name":block.name,
+                "actual_trays":res.metrics.get("actual_trays"),
+                "tray_efficiency_fraction":res.metrics.get("overall_tray_efficiency_fraction"),
+                "feed_tray_from_top":res.metrics.get("feed_tray_from_top"),
+                "reflux_ratio":res.metrics.get("molar_reflux_ratio"),
+                "pressure_atm_abs":res.metrics.get("overhead_pressure_atm_abs"),
+                "distillate_tph":sc.get("distillate_tph",res.metrics.get("overhead_total_tph",0.0)),
+                "internal_vapour_tph":sc.get("internal_vapour_tph",0.0),
+                "internal_liquid_tph":sc.get("estimated_internal_liquid_tph",0.0),
+                "estimated_reboiler_kW":sc.get("estimated_reboiler_kW",res.metrics.get("reboiler_kW",0.0)),
+                "estimated_condenser_kW":sc.get("estimated_condenser_kW",res.metrics.get("condenser_kW",0.0)),
+                "minimum_stages":sc.get("minimum_stages_fenske"),
+                "required_theoretical_stages":sc.get("required_theoretical_stages_gilliland"),
+                "stage_margin":sc.get("stage_margin"),
+                "stage_feasible":sc.get("stage_feasible"),
+                "reflux_feasible":sc.get("reflux_feasible"),
+                "status":sc.get("status","SCREENING"),
+            })
+        return {
+            "columns":rows,
+            "design_boundary":"Shortcut binary ethanol/water design. Internal traffic and duties are suitable for preliminary RFQ screening, not final vendor hydraulic or mechanical design.",
+            "next_vendor_inputs":["design feed rate/composition","operating pressure","required product/recovery","internal vapour and liquid traffic","tray/stage basis","reboiler and condenser duties","materials/corrosion basis","turndown and startup requirements"]
+        }
+
     def _excel_parity_summary(self):
         def metric(bid,key,default=0.0):
             return self.results[bid].metrics.get(key,default) if bid in self.results else default
@@ -629,6 +664,7 @@ class Flowsheet:
             "elemental_balance": self._elemental_balance(),
             "evidence_quality_summary": self._evidence_quality_summary(),
             "cooling_water_summary": self._cooling_water_summary(),
+            "distillation_design_summary": self._distillation_design_summary(),
             "excel_parity_summary": self._excel_parity_summary(),
             "terminal_component_totals": self._component_terminal_totals(),
             "engineering_notes": [
