@@ -105,7 +105,7 @@ jobs:
         with:
           tagName: app-v__VERSION__
           releaseName: "BioAgri Process Simulator v__VERSION__"
-          releaseBody: "BioAgri Process Simulator V0.24.7 begins the modular flowsheet architecture: dry size reduction now precedes slurry make-up in the Miscanthus reference route, while the connected batch scheduler derives section order from flowsheet topology rather than fixed P-numbers, instance IDs, or a hard-coded pretreatment/hydrolysis/fermentation sequence."
+          releaseBody: "BioAgri Process Simulator V0.25.0 modular architecture release. Block capabilities now drive batch scheduling, recycle selection, source/terminal discovery and distillation RFQ reporting. The Digital Twin route is generated from the configured flowsheet topology rather than a fixed P01-P12 JSX chain. Miscanthus remains the reference validation route while the core engine is being generalized for rearranged and alternative lignocellulosic process configurations."
           releaseDraft: false
           prerelease: false
           args: --bundles nsis
