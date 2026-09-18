@@ -82,6 +82,12 @@ class ApplicationRegressionTests(unittest.TestCase):
         self.assertEqual(result["site_process_water"]["consumers"][0]["mode"], "manual")
         self.assertTrue(any("Manual process water" in warning for warning in result["warnings"]))
 
+    def test_block_capabilities_are_exposed_for_generic_engine_consumers(self):
+        from blocks import PretreatmentBlock, BeerColumnBlock, ProductSinkBlock
+        self.assertIn("batch_process", PretreatmentBlock("x").schema()["capabilities"])
+        self.assertIn("distillation", BeerColumnBlock("x").schema()["capabilities"])
+        self.assertIn("sink", ProductSinkBlock("x").schema()["capabilities"])
+
     def test_block_schema_exposes_stable_catalogue_metadata(self):
         tank = BLOCK_REGISTRY["process_water_tank"]("schema").schema()
         self.assertEqual(tank["type_id"], "process_water_tank")
