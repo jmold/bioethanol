@@ -44,6 +44,9 @@ class ShortcutResult:
     reflux_feasible: bool
     estimated_reboiler_kW: float
     estimated_condenser_kW: float
+    internal_vapour_tph: float
+    estimated_internal_liquid_tph: float
+    distillate_tph: float
     method: str = "Fenske-Underwood-Gilliland binary ethanol/water shortcut"
     status: str = "MECHANISTIC SHORTCUT / NOT RIGOROUS RATE-BASED VLE"
 
@@ -176,4 +179,7 @@ def shortcut_column(
         reflux_feasible=float(reflux_ratio)>rmin,
         estimated_reboiler_kW=duty,
         estimated_condenser_kW=duty,
+        internal_vapour_tph=vapour_tph,
+        estimated_internal_liquid_tph=max(0.0,float(distillate_tph))*max(float(reflux_ratio),0.0),
+        distillate_tph=max(0.0,float(distillate_tph)),
     )
