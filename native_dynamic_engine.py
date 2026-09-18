@@ -151,15 +151,14 @@ def build_native_dynamic_simulation(definition: dict, results: dict, timestep_mi
     schedules: list[VesselSchedule] = []
     kinetics: dict[str, dict] = {}
 
-    # Specialist chemistry models currently provide these batch schedule adapters.
-    # The rest of the dynamic engine consumes the common VesselSchedule contract;
-    # future batch-capable blocks only need to add an adapter here, not alter the
-    # connected scheduler or flowsheet topology logic.
-    BATCH_SCHEDULE_ADAPTER_TYPES = {"pretreatment", "hydrolysis", "fermentation"}
+    # Specialist chemistry models provide schedule adapters, but eligibility is
+    # declared by the block capability contract rather than by route/P-number.
+    from blocks import BLOCK_REGISTRY
 
     for block in definition.get("blocks", []):
         btype = block.get("type")
-        if btype not in BATCH_SCHEDULE_ADAPTER_TYPES:
+        block_cls = BLOCK_REGISTRY.get(btype)
+        if block_cls is None or "batch_process" not in getattr(block_cls, "capabilities", ()):
             continue
         bid = block["id"]
         name = block.get("name", bid)
