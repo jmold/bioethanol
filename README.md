@@ -1,7 +1,7 @@
 # Bio-Agri Process Simulator — V0.24
 
-Application version: **0.24.6**
-Engineering model version: **0.24.3**
+Application version: **0.24.7**
+Engineering model version: **0.24.4**
 Schema version: **1.0.0**
 
 Bio-Agri is a local engineering-screening application for lignocellulosic ethanol process development. It combines a visual flowsheet, transparent equipment assumptions, validated mass-balance calculations, scenario comparison, sensitivity analysis, and plant-level utility summaries.
