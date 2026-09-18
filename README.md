@@ -151,3 +151,36 @@ V0.23 makes the operational views first-class engineering workspaces. The Digita
 A new Plant Dashboard provides production, scheduled throughput, utilities, specific energy, material-balance health, bottleneck utilisation, scheduler health and open engineering assumptions in one landing view. The connected event engine remains the source of truth: direct P02→P04→P05 transfers are retained and no intermediate buffer vessels are invented.
 
 The Windows release workflow also pre-caches NSIS with retry logic to reduce transient packaging failures. Development validation remains PR/manual only to reduce notification noise.
+
+
+## Development roadmap
+
+The application is being developed as a configurable engineering simulator; the Miscanthus plant is the reference validation flowsheet rather than a hard-coded process route.
+
+### V0.25 — Generic flowsheet architecture
+- Capability-driven blocks and stable material/utility port contracts.
+- Topology-driven calculation and batch scheduling independent of P-numbers and instance IDs.
+- Generic batch schedule adapters for specialist process models.
+- Configuration-driven process and digital-twin presentation.
+- Regression cases for reordered, duplicated and inserted standard equipment.
+
+### V0.26 — Engineering model audit
+- Mechanistic mass/water closure review by process section.
+- Electrical, thermal and cooling load audit.
+- Explicit engineering status, basis, confidence and source fields for important assumptions.
+- Heat-recovery and process-water integration review.
+- Equipment sizing basis and design margins.
+
+### V0.27 — Distillation design
+- P08/P09/P10 feed and product design basis.
+- Fenske/Underwood/Gilliland screening plus internal vapour/liquid traffic.
+- Reboiler/condenser duties, heat integration and startup versus normal operation.
+- Preliminary column hydraulics/diameter and supplier RFQ data.
+- Preserve clear boundary between screening calculations and rigorous VLE/vendor design.
+
+### V0.28+ — General engineering simulator
+- Reusable block/process templates and user-defined alternative flowsheets.
+- Recycles and optional intermediate buffers.
+- Scenario comparison, automatic bottleneck analysis and richer scheduling.
+- CAPEX/OPEX and energy-intensity screening.
+- Controlled engineering reports and supplier data sheets.
